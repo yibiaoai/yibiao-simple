@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(mkdir:*)",
+      "Bash(npx create-react-app:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss init:*)",
+      "Bash(python:*)",
+      "Bash(del main_app.py components page_modules services requirements.txt user_config.json)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

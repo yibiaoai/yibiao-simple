@@ -1,0 +1,87 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "启动前端开发服务器",
+            "type": "shell",
+            "command": "npm",
+            "args": ["start"],
+            "options": {
+                "cwd": "${workspaceFolder}/frontend"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "runOptions": {
+                "runOn": "folderOpen"
+            },
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "webpack",
+                "source": "webpack",
+                "fileLocation": "relative",
+                "pattern": {
+                    "regexp": "ERROR in (.*)",
+                    "file": 1
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": ".*webpack.*",
+                    "endsPattern": ".*compiled.*"
+                }
+            }
+        },
+        {
+            "label": "构建前端",
+            "type": "shell", 
+            "command": "npm",
+            "args": ["run", "build"],
+            "options": {
+                "cwd": "${workspaceFolder}/frontend"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            }
+        },
+        {
+            "label": "复制前端构建到后端",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "-c", 
+                "import shutil; shutil.copytree('frontend/build', 'backend/static', dirs_exist_ok=True); print('前端构建文件已复制到backend/static')"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "dependsOn": "构建前端"
+        },
+        {
+            "label": "完整构建流程",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "构建前端",
+                "复制前端构建到后端"
+            ]
+        }
+    ]
+}
