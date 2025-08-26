@@ -1,6 +1,6 @@
 """OpenAI服务"""
 import openai
-from typing import Generator, Dict, Any, List
+from typing import Generator, Dict, Any, List, AsyncGenerator
 import json
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
@@ -15,8 +15,8 @@ class OpenAIService:
         self.base_url = base_url
         self.model_name = model_name
         
-        # 初始化OpenAI客户端
-        self.client = openai.OpenAI(
+        # 初始化OpenAI客户端 - 使用异步客户端
+        self.client = openai.AsyncOpenAI(
             api_key=api_key,
             base_url=base_url if base_url else None
         )
@@ -24,21 +24,13 @@ class OpenAIService:
     async def get_available_models(self) -> List[str]:
         """获取可用的模型列表"""
         try:
-            def _get_models():
-                models = self.client.models.list()
-                chat_models = []
-                for model in models.data:
-                    model_id = model.id.lower()
-                    if any(keyword in model_id for keyword in ['gpt', 'claude', 'chat', 'llama', 'qwen', 'deepseek']):
-                        chat_models.append(model.id)
-                return sorted(list(set(chat_models)))
-            
-            # 在线程池中执行同步操作
-            loop = asyncio.get_event_loop()
-            with ThreadPoolExecutor() as executor:
-                models = await loop.run_in_executor(executor, _get_models)
-            
-            return models
+            models = await self.client.models.list()
+            chat_models = []
+            for model in models.data:
+                model_id = model.id.lower()
+                if any(keyword in model_id for keyword in ['gpt', 'claude', 'chat', 'llama', 'qwen', 'deepseek']):
+                    chat_models.append(model.id)
+            return sorted(list(set(chat_models)))
         except Exception as e:
             raise Exception(f"获取模型列表失败: {str(e)}")
     
@@ -47,33 +39,23 @@ class OpenAIService:
         messages: list, 
         temperature: float = 0.7,
         response_format: dict = None
-    ) -> Generator[str, None, None]:
-        """流式聊天完成请求"""
-        def _stream():
-            try:
-                stream = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    temperature=temperature,
-                    stream=True,
-                    **({"response_format": response_format} if response_format is not None else {})
-                )
-                
-                for chunk in stream:
-                    if chunk.choices[0].delta.content is not None:
-                        yield chunk.choices[0].delta.content
-                        
-            except Exception as e:
-                yield f"错误: {str(e)}"
-        
-        # 在线程池中执行流式操作
-        loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor() as executor:
-            future = executor.submit(lambda: list(_stream()))
-            result = await loop.run_in_executor(None, lambda: future.result())
+    ) -> AsyncGenerator[str, None]:
+        """流式聊天完成请求 - 真正的异步实现"""
+        try:
+            stream = await self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                temperature=temperature,
+                stream=True,
+                **({"response_format": response_format} if response_format is not None else {})
+            )
             
-            for chunk in result:
-                yield chunk
+            async for chunk in stream:
+                if chunk.choices[0].delta.content is not None:
+                    yield chunk.choices[0].delta.content
+                    
+        except Exception as e:
+            yield f"错误: {str(e)}"
     
     async def analyze_document(self, file_content: str, analysis_type: str = "overview") -> str:
         """分析文档内容"""
@@ -222,21 +204,39 @@ JSON格式要求：
             current_parent_chapters.append(current_chapter_info)
             
             if is_leaf:
-                # 为叶子节点生成内容
-                content = await self._generate_chapter_content(chapter, current_parent_chapters[:-1], project_overview)
+                # 为叶子节点生成内容，传递同级章节信息
+                content = ""
+                async for chunk in self._generate_chapter_content(
+                    chapter, 
+                    current_parent_chapters[:-1],  # 上级章节列表（排除当前章节）
+                    chapters,  # 同级章节列表
+                    project_overview
+                ):
+                    content += chunk
                 if content:
                     chapter['content'] = content
             else:
                 # 递归处理子章节
                 await self._process_outline_recursive(chapter['children'], current_parent_chapters, project_overview)
     
-    async def _generate_chapter_content(self, chapter: dict, parent_chapters: list = None, project_overview: str = "") -> str:
-        """为单个章节生成内容"""
+    async def _generate_chapter_content(self, chapter: dict, parent_chapters: list = None, sibling_chapters: list = None, project_overview: str = "") -> AsyncGenerator[str, None]:
+        """
+        为单个章节流式生成内容
+
+        Args:
+            chapter: 章节数据
+            parent_chapters: 上级章节列表，每个元素包含章节id、标题和描述
+            sibling_chapters: 同级章节列表，避免内容重复
+            project_overview: 项目概述信息，提供项目背景和要求
+
+        Yields:
+            生成的内容流
+        """
         try:
             chapter_id = chapter.get('id', 'unknown')
             chapter_title = chapter.get('title', '未命名章节')
             chapter_description = chapter.get('description', '')
-            
+
             # 构建提示词
             system_prompt = """你是一个专业的标书编写专家，负责为投标文件的技术标部分生成具体内容。
 
@@ -245,9 +245,10 @@ JSON格式要求：
 2. 这是技术方案，不是宣传报告，注意朴实无华，不要假大空
 3. 语言要正式、规范，符合标书写作要求，但不要使用奇怪的连接词，不要让人觉得内容像是AI生成的
 4. 内容要详细具体，避免空泛的描述
-5. 直接返回章节内容，不生成标题，不要任何额外说明或格式标记
+5. 注意避免与同级章节内容重复，保持内容的独特性和互补性
+6. 直接返回章节内容，不生成标题，不要任何额外说明或格式标记
 """
-            
+
             # 构建上下文信息
             context_info = ""
             
@@ -257,6 +258,13 @@ JSON格式要求：
                 for parent in parent_chapters:
                     context_info += f"- {parent['id']} {parent['title']}\n  {parent['description']}\n"
             
+            # 同级章节信息（排除当前章节）
+            if sibling_chapters:
+                context_info += "同级章节信息（请避免内容重复）：\n"
+                for sibling in sibling_chapters:
+                    if sibling.get('id') != chapter_id:  # 排除当前章节
+                        context_info += f"- {sibling.get('id', 'unknown')} {sibling.get('title', '未命名')}\n  {sibling.get('description', '')}\n"
+
             # 构建用户提示词
             project_info = ""
             if project_overview.strip():
@@ -269,21 +277,18 @@ JSON格式要求：
 章节标题: {chapter_title}
 章节描述: {chapter_description}
 
-请根据项目概述信息和上述章节层级关系，生成详细的专业内容，确保与上级章节的内容逻辑相承。"""
-            
-            # 调用AI生成内容
+请根据项目概述信息和上述章节层级关系，生成详细的专业内容，确保与上级章节的内容逻辑相承，同时避免与同级章节内容重复，突出本章节的独特性和技术方案的优势。"""
+
+            # 调用AI流式生成内容
             messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ]
-            
-            # 收集所有生成的文本
-            full_content = ""
+
+            # 流式返回生成的文本
             async for chunk in self.stream_chat_completion(messages, temperature=0.7):
-                full_content += chunk
-            
-            return full_content.strip()
-            
+                yield chunk
+
         except Exception as e:
             print(f"生成章节内容时出错: {str(e)}")
-            return ""
+            yield f"错误: {str(e)}"

@@ -18,6 +18,8 @@ export interface OutlineItem {
 
 export interface OutlineData {
   outline: OutlineItem[];
+  project_name?: string;
+  project_overview?: string;
 }
 
 export interface AppState {

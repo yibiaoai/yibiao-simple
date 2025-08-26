@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 import os
 
 from .config import settings
-from .routers import config, document, outline
+from .routers import config, document, outline, content
 
 # 创建FastAPI应用实例
 app = FastAPI(
@@ -28,6 +28,7 @@ app.add_middleware(
 app.include_router(config.router)
 app.include_router(document.router)
 app.include_router(outline.router)
+app.include_router(content.router)
 
 # 健康检查端点
 @app.get("/health")

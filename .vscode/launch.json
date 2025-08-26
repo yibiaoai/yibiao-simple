@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "🚀 [开发模式] 后端服务 (FastAPI)",
+            "name": "后端服务 (FastAPI)",
             "type": "python",
             "request": "launch",
             "module": "uvicorn",
@@ -11,7 +11,7 @@
                 "--host=127.0.0.1",
                 "--port=8000",
                 "--reload",
-                "--log-level=debug"
+                "--log-level=info"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/backend",
@@ -20,42 +20,25 @@
             }
         },
         {
-            "name": "📦 [生产模式] 统一应用 (单端口)",
-            "type": "python",
+            "name": "前端服务 (React)",
+            "type": "node",
             "request": "launch",
-            "program": "${workspaceFolder}/unified_app.py",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": ["start"],
             "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}/frontend",
             "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            }
-        },
-        {
-            "name": "🔧 [生产模式] FastAPI服务 (unified)",
-            "type": "python",
-            "request": "launch",
-            "module": "uvicorn",
-            "args": [
-                "unified_app:app",
-                "--host=127.0.0.1",
-                "--port=8000",
-                "--reload",
-                "--log-level=debug"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
+                "BROWSER": "none"
             }
         }
     ],
     "compounds": [
         {
-            "name": "🔥 [开发模式] 前后端分离调试",
+            "name": "🚀 启动前后端项目",
             "configurations": [
-                "🚀 [开发模式] 后端服务 (FastAPI)"
+                "后端服务 (FastAPI)",
+                "前端服务 (React)"
             ],
-            "preLaunchTask": "启动前端开发服务器",
             "stopAll": true
         }
     ]

@@ -73,6 +73,14 @@ class ContentGenerationRequest(BaseModel):
     project_overview: str = Field("", description="项目概述")
 
 
+class ChapterContentRequest(BaseModel):
+    """单章节内容生成请求"""
+    chapter: Dict[str, Any] = Field(..., description="章节信息")
+    parent_chapters: Optional[List[Dict[str, Any]]] = Field(None, description="上级章节列表")
+    sibling_chapters: Optional[List[Dict[str, Any]]] = Field(None, description="同级章节列表")
+    project_overview: str = Field("", description="项目概述")
+
+
 class ErrorResponse(BaseModel):
     """错误响应"""
     error: str
