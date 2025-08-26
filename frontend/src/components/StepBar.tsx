@@ -47,8 +47,8 @@ const StepBar: React.FC<StepBarProps> = ({ steps, currentStep }) => {
                   </div>
                 </>
               )}
-              <div className="absolute top-10 left-1/2 transform -translate-x-1/2 w-32 text-center">
-                <span className={`text-sm font-medium ${index <= currentStep ? 'text-primary-600' : 'text-gray-500'}`}>
+              <div className="absolute top-[-12] left-1/2 transform -translate-x-1/2 min-w-0 max-w-36 text-center px-2">
+                <span className={`text-sm font-medium whitespace-nowrap ${index <= currentStep ? 'text-primary-600' : 'text-gray-500'}`}>
                   {step}
                 </span>
               </div>

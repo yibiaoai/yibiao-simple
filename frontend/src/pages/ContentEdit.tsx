@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { OutlineData, OutlineItem } from '../types';
-import { DocumentTextIcon, PlayIcon, DocumentArrowDownIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
+import { DocumentTextIcon, PlayIcon, DocumentArrowDownIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUpIcon } from '@heroicons/react/24/outline';
 import { contentApi, ChapterContentRequest } from '../services/api';
 import { saveAs } from 'file-saver';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
@@ -37,6 +37,7 @@ const ContentEdit: React.FC<ContentEditProps> = ({
     generating: new Set<string>()
   });
   const [leafItems, setLeafItems] = useState<OutlineItem[]>([]);
+  const [showScrollToTop, setShowScrollToTop] = useState(false);
 
   // 收集所有叶子节点
   const collectLeafItems = useCallback((items: OutlineItem[]): OutlineItem[] => {
@@ -94,6 +95,17 @@ const ContentEdit: React.FC<ContentEditProps> = ({
       setProgress(prev => ({ ...prev, total: leaves.length }));
     }
   }, [outlineData, collectLeafItems]);
+
+  // 监听页面滚动，控制回到顶部按钮的显示
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      setShowScrollToTop(scrollTop > 300);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // 获取叶子节点的实时内容
   const getLeafItemContent = (itemId: string): string | undefined => {
@@ -440,6 +452,14 @@ const ContentEdit: React.FC<ContentEditProps> = ({
     return paragraphs;
   };
 
+  // 滚动到页面顶部
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  };
+
   // 导出Word文档
   const handleExportWord = async () => {
     if (!outlineData) return;
@@ -684,6 +704,17 @@ const ContentEdit: React.FC<ContentEditProps> = ({
           </div>
         </div>
       </div>
+
+      {/* 回到顶部按钮 */}
+      {showScrollToTop && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-3 shadow-lg transition-all duration-300 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 z-50"
+          aria-label="回到顶部"
+        >
+          <ArrowUpIcon className="w-5 h-5" />
+        </button>
+      )}
     </div>
   );
 };
