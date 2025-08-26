@@ -4,6 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
+import fastapi.middleware.cors
+import starlette.middleware.cors
 
 from .config import settings
 from .routers import config, document, outline, content

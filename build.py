@@ -58,14 +58,13 @@ def create_requirements():
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
-openai==1.3.7
+openai==1.101.0
 python-docx==0.8.11
 PyPDF2==3.0.1
 pydantic==2.5.0
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
 aiofiles==23.2.1
-lxml==4.9.3
 """
     
     with open("requirements_build.txt", "w", encoding="utf-8") as f:
@@ -121,6 +120,16 @@ hiddenimports = [
     'fastapi.responses',
     'fastapi.middleware',
     'fastapi.middleware.cors',
+    'fastapi.routing',
+    'fastapi.exceptions',
+    'starlette',
+    'starlette.middleware',
+    'starlette.middleware.cors',
+    'starlette.applications',
+    'starlette.routing',
+    'starlette.responses',
+    'starlette.staticfiles',
+    'starlette.types',
     'openai',
     'docx',
     'docx.oxml',
@@ -135,13 +144,10 @@ hiddenimports = [
     'json',
     'pathlib',
     'asyncio',
-    'lxml',
-    'lxml.etree',
-    'lxml._elementpath',
 ]
 
 a = Analysis(
-    ['unified_app.py'],
+    ['app_launcher.py'],
     pathex=[],
     binaries=[],
     datas=datas,
@@ -200,17 +206,30 @@ def build_exe():
         return False
     
     # 安装应用依赖
-    if not run_command("pip install -r requirements_build.txt"):
+    if not run_command("pip install -r backend/requirements.txt"):
         print("安装应用依赖失败")
         return False
     
     # 构建exe - 使用更详细的参数
     pyinstaller_cmd = (
         "pyinstaller --onefile --name=\"AI写标书助手\" "
-        "--add-data=\"backend/static;static\" "
-        "--hidden-import=uvicorn --hidden-import=fastapi --hidden-import=PyPDF2 "
-        "--hidden-import=docx --hidden-import=aiofiles --hidden-import=lxml "
-        "--console unified_app.py"
+        "--add-data=\"backend;backend\" "
+        "--hidden-import=uvicorn --hidden-import=uvicorn.logging --hidden-import=uvicorn.loops "
+        "--hidden-import=uvicorn.loops.auto --hidden-import=uvicorn.protocols "
+        "--hidden-import=uvicorn.protocols.http --hidden-import=uvicorn.protocols.http.auto "
+        "--hidden-import=uvicorn.protocols.websockets --hidden-import=uvicorn.protocols.websockets.auto "
+        "--hidden-import=uvicorn.lifespan --hidden-import=uvicorn.lifespan.on --hidden-import=uvicorn.server "
+        "--hidden-import=fastapi --hidden-import=fastapi.staticfiles --hidden-import=fastapi.responses "
+        "--hidden-import=fastapi.middleware --hidden-import=fastapi.middleware.cors --hidden-import=fastapi.routing "
+        "--hidden-import=fastapi.exceptions --hidden-import=starlette --hidden-import=starlette.middleware "
+        "--hidden-import=starlette.middleware.cors --hidden-import=starlette.applications "
+        "--hidden-import=starlette.routing --hidden-import=starlette.responses --hidden-import=starlette.staticfiles "
+        "--hidden-import=starlette.types --hidden-import=openai --hidden-import=docx --hidden-import=docx.oxml "
+        "--hidden-import=docx.oxml.ns --hidden-import=PyPDF2 --hidden-import=PyPDF2.generic "
+        "--hidden-import=pydantic --hidden-import=pydantic_settings --hidden-import=multipart "
+        "--hidden-import=aiofiles --hidden-import=dotenv --hidden-import=json --hidden-import=pathlib "
+        "--hidden-import=asyncio "
+        "--console app_launcher.py"
     )
     
     if not run_command(pyinstaller_cmd):

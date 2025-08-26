@@ -6,6 +6,8 @@ from enum import Enum
 
 class ConfigRequest(BaseModel):
     """OpenAI配置请求"""
+    model_config = {"protected_namespaces": ()}
+    
     api_key: str = Field(..., description="OpenAI API密钥")
     base_url: Optional[str] = Field(None, description="Base URL")
     model_name: str = Field("gpt-3.5-turbo", description="模型名称")
