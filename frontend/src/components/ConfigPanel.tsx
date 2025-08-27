@@ -193,7 +193,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onConfigChange }) => 
 
         {/* 底部图标链接 */}
         <div className="border-t border-gray-200 pt-4">
-          <div className="flex items-center justify-start space-x-4">
+          <div className="flex items-center justify-center space-x-4">
             {/* GitHub图标 */}
             <a
               href="https://github.com/yibiaoai/yibiao-simple"
@@ -216,7 +216,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onConfigChange }) => 
               title="易标官网"
             >
               <img 
-                src="/yibiao.ico" 
+                src="/yibiao.png" 
                 alt="易标" 
                 className="w-6 h-6" 
                 onError={(e) => {
