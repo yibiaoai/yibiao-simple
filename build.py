@@ -249,7 +249,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='AI写标书助手',
+    name='yibiao-simple',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
