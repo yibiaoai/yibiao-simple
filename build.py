@@ -4,6 +4,7 @@ import sys
 import subprocess
 import shutil
 from pathlib import Path
+import glob
 
 def run_command(cmd, cwd=None):
     """运行命令"""
@@ -13,6 +14,83 @@ def run_command(cmd, cwd=None):
         print(f"命令执行失败: {result.stderr}")
         return False
     print(result.stdout)
+    return True
+
+def clean_build_files():
+    """清理构建相关的文件和文件夹"""
+    print("="*50)
+    print("清理构建文件...")
+    print("="*50)
+    
+    # 要清理的文件夹列表
+    folders_to_clean = [
+        "dist",          # PyInstaller输出目录
+        "build",         # PyInstaller构建缓存
+        "frontend/build", # React构建输出
+        "backend/static", # 后端静态文件（前端构建产物）
+    ]
+    
+    # 要清理的文件模式
+    files_to_clean = [
+        "*.spec",           # PyInstaller spec文件
+        "requirements_build.txt",  # 临时requirements文件
+    ]
+    
+    # 清理文件夹
+    for folder in folders_to_clean:
+        folder_path = Path(folder)
+        if folder_path.exists():
+            print(f"删除文件夹: {folder}")
+            try:
+                shutil.rmtree(folder_path)
+                print(f"✓ 已删除 {folder}")
+            except Exception as e:
+                print(f"✗ 删除 {folder} 失败: {e}")
+        else:
+            print(f"- 文件夹不存在: {folder}")
+    
+    # 清理文件
+    for file_pattern in files_to_clean:
+        for file_path in glob.glob(file_pattern):
+            try:
+                os.remove(file_path)
+                print(f"✓ 已删除文件: {file_path}")
+            except Exception as e:
+                print(f"✗ 删除文件 {file_path} 失败: {e}")
+    
+    # 清理Python缓存文件
+    print("清理Python缓存文件...")
+    for root, dirs, files in os.walk("."):
+        # 删除__pycache__文件夹
+        if "__pycache__" in dirs:
+            pycache_path = Path(root) / "__pycache__"
+            try:
+                shutil.rmtree(pycache_path)
+                print(f"✓ 已删除: {pycache_path}")
+            except Exception as e:
+                print(f"✗ 删除 {pycache_path} 失败: {e}")
+            dirs.remove("__pycache__")  # 避免继续遍历已删除的目录
+        
+        # 删除.pyc文件
+        for file in files:
+            if file.endswith(".pyc"):
+                pyc_path = Path(root) / file
+                try:
+                    pyc_path.unlink()
+                    print(f"✓ 已删除: {pyc_path}")
+                except Exception as e:
+                    print(f"✗ 删除 {pyc_path} 失败: {e}")
+    
+    # 清理node_modules中的构建缓存（如果存在）
+    node_modules_cache = Path("frontend/node_modules/.cache")
+    if node_modules_cache.exists():
+        try:
+            shutil.rmtree(node_modules_cache)
+            print(f"✓ 已删除Node.js缓存: {node_modules_cache}")
+        except Exception as e:
+            print(f"✗ 删除Node.js缓存失败: {e}")
+    
+    print("文件清理完成！")
     return True
 
 def build_frontend():
@@ -210,7 +288,7 @@ def build_exe():
         print("安装应用依赖失败")
         return False
     
-    # 构建exe - 使用更详细的参数
+    # 构建exe - 使用更详细的参数，增加进程管理相关导入
     pyinstaller_cmd = (
         "pyinstaller --onefile --name=\"AI写标书助手\" "
         "--add-data=\"backend;backend\" "
@@ -228,7 +306,7 @@ def build_exe():
         "--hidden-import=docx.oxml.ns --hidden-import=PyPDF2 --hidden-import=PyPDF2.generic "
         "--hidden-import=pydantic --hidden-import=pydantic_settings --hidden-import=multipart "
         "--hidden-import=aiofiles --hidden-import=dotenv --hidden-import=json --hidden-import=pathlib "
-        "--hidden-import=asyncio "
+        "--hidden-import=asyncio --hidden-import=signal --hidden-import=atexit "
         "--console app_launcher.py"
     )
     
@@ -247,6 +325,10 @@ def main():
     # 确保在项目根目录
     if not Path("backend").exists() or not Path("frontend").exists():
         print("请在项目根目录运行此脚本")
+        return False
+    
+    # 清理构建文件
+    if not clean_build_files():
         return False
     
     # 构建前端

@@ -35,7 +35,9 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onConfigChange }) => 
   const handleSave = async () => {
     try {
       setLoading(true);
+      console.log('保存配置:', localConfig);
       const response = await configApi.saveConfig(localConfig);
+      console.log('保存响应:', response.data);
       
       if (response.data.success) {
         onConfigChange(localConfig);
@@ -45,6 +47,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onConfigChange }) => 
         setMessage({ type: 'error', text: response.data.message || '配置保存失败' });
       }
     } catch (error) {
+      console.error('保存配置错误:', error);
       setMessage({ type: 'error', text: '配置保存失败' });
     } finally {
       setLoading(false);
@@ -63,6 +66,10 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onConfigChange }) => 
       
       if (response.data.success) {
         setModels(response.data.models);
+        // 如果当前选中的模型不在新的模型列表中，则选择第一个可用模型
+        if (response.data.models.length > 0 && !response.data.models.includes(localConfig.model_name)) {
+          setLocalConfig({ ...localConfig, model_name: response.data.models[0] });
+        }
         setMessage({ type: 'success', text: `获取到 ${response.data.models.length} 个模型` });
         setTimeout(() => setMessage(null), 3000);
       } else {
@@ -139,7 +146,10 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onConfigChange }) => 
               <select
                 id="model_name"
                 value={localConfig.model_name}
-                onChange={(e) => setLocalConfig({ ...localConfig, model_name: e.target.value })}
+                onChange={(e) => {
+                  console.log('模型选择变更:', e.target.value);
+                  setLocalConfig({ ...localConfig, model_name: e.target.value });
+                }}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
               >
                 {models.map((model) => (

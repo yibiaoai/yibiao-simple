@@ -21,13 +21,28 @@ if %errorlevel% neq 0 (
 )
 
 echo 开始构建...
+echo 注意：构建前将自动清理以下文件和文件夹：
+echo   - dist/ (PyInstaller输出目录)
+echo   - build/ (PyInstaller构建缓存)  
+echo   - frontend/build/ (React构建输出)
+echo   - backend/static/ (后端静态文件)
+echo   - __pycache__/ (Python缓存)
+echo   - *.spec (PyInstaller配置文件)
+echo.
+
 python build.py
 
 if %errorlevel% eq 0 (
+    echo.
+    echo ================================================
     echo 构建成功！
     echo exe文件位于: dist\AI写标书助手.exe
+    echo ================================================
 ) else (
-    echo 构建失败！
+    echo.
+    echo ================================================
+    echo 构建失败！请检查上方的错误信息
+    echo ================================================
 )
 
 pause
