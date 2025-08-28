@@ -12,3 +12,8 @@ aiofiles==23.2.1
 pdfplumber==0.11.7
 pymupdf==1.26.4
 docx2python==3.5.0
+# MCP服务支持
+mcp>=1.0.0
+requests>=2.31.0
+asyncio-throttle
+duckduckgo-search
