@@ -8,3 +8,7 @@ pydantic==2.5.0
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
 aiofiles==23.2.1
+# 新增的文档处理库
+pdfplumber==0.11.7
+pymupdf==1.26.4
+docx2python==3.5.0

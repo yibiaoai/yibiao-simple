@@ -81,9 +81,6 @@ export const documentApi = {
     });
   },
 
-  // 分析文档
-  analyzeDocument: (data: AnalysisRequest) =>
-    api.post('/api/document/analyze', data),
 
   // 流式分析文档
   analyzeDocumentStream: (data: AnalysisRequest) =>

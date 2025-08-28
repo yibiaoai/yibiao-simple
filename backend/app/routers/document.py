@@ -41,36 +41,6 @@ async def upload_file(file: UploadFile = File(...)):
             message=f"文件处理失败: {str(e)}"
         )
 
-
-@router.post("/analyze")
-async def analyze_document(request: AnalysisRequest):
-    """分析文档内容"""
-    try:
-        # 加载配置
-        config = config_manager.load_config()
-        
-        if not config.get('api_key'):
-            raise HTTPException(status_code=400, detail="请先配置OpenAI API密钥")
-        
-        # 创建OpenAI服务实例
-        openai_service = OpenAIService(
-            api_key=config['api_key'],
-            base_url=config.get('base_url', ''),
-            model_name=config.get('model_name', 'gpt-3.5-turbo')
-        )
-        
-        # 分析文档
-        result = await openai_service.analyze_document(
-            file_content=request.file_content,
-            analysis_type=request.analysis_type.value
-        )
-        
-        return {"result": result}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"文档分析失败: {str(e)}")
-
-
 @router.post("/analyze-stream")
 async def analyze_document_stream(request: AnalysisRequest):
     """流式分析文档内容"""
@@ -91,15 +61,16 @@ async def analyze_document_stream(request: AnalysisRequest):
         async def generate():
             # 构建分析提示词
             if request.analysis_type == AnalysisType.OVERVIEW:
-                system_prompt = """你是一个专业的招标文件分析专家。请分析上传的招标文件，提取并总结项目概述信息。
+                system_prompt = """你是一个专业的标书撰写专家。请分析用户发来的招标文件，提取并总结项目概述信息。
             
 请重点关注以下方面：
 1. 项目名称和基本信息
 2. 项目背景和目的
 3. 项目规模和预算
 4. 项目时间安排
-5. 主要技术特点
-6. 关键要求
+5. 项目要实施的具体内容
+6. 主要技术特点
+7. 其他关键要求
 
 工作要求：
 1. 保持提取信息的全面性和准确性，尽量使用原文内容，不要自己编写
@@ -107,13 +78,42 @@ async def analyze_document_stream(request: AnalysisRequest):
 3. 直接返回整理好的项目概述，除此之外不返回任何其他内容
 """
             else:  # requirements
-                system_prompt = """你是一个专业的招标文件分析专家。请分析上传的招标文件，提取技术评分要求,为编写投标文件中的技术方案做准备。
-            
-请重点关注以下方面：
-1. 理解技术评分的意思：用于编写、评比投标文件中技术标的标准，关注技术方案、实施计划、技术能力、质量控制、创新性等内容，避免混淆商务评分（资质、信誉、合同条款）和价格评分（报价金额）
-2. 仅提取技术评分项及相关要求，不包括商务、价格及其他
-3. 生成内容要确保是从招标文件中提取的，不要自己编写
-4. 直接返回整理好的技术评分要求，除此之外不返回任何其他内容
+                system_prompt = """你是一名专业的招标文件分析师，擅长从复杂的招标文档中高效提取“技术评分项”相关内容。请严格按照以下步骤和规则执行任务：
+### 1. 目标定位
+- 重点识别文档中与“技术评分”、“评标方法”、“评分标准”、“技术参数”或“评审要素”相关的章节（如“第X章 评标方法”或“附件X：技术评分表”）。
+- 忽略商务、价格、资质等非技术类评分项。
+### 2. 提取内容要求
+对每一项技术评分项，按以下结构化格式输出（若信息缺失，标注“未明确”）：
+【评分项名称】：<原文描述，保留专业术语>
+【权重/分值】：<具体分值或占比，如“30分”或“40%”>
+【评分标准】：<详细规则，如“≥95%得满分，每低1%扣0.5分”>
+【数据来源】：<文档中的位置，如“第5.2.3条”或“附件3-表2”>
+【备注】：<如有条件限制、参考依据或模糊表述，简要说明>
+
+### 3. 处理规则
+- **模糊表述**：若评分标准描述含糊（如“综合评价”），标注“[需人工确认]”并给出上下文。
+- **表格处理**：若评分项以表格形式呈现，按行提取，并标注“[表格数据]”。
+- **分层结构**：若存在二级评分项（如“技术方案→子项1、子项2”），用缩进或编号体现层级关系。
+- **单位统一**：将所有分值统一为“分”或“%”，并注明原文单位（如原文为“20点”则标注“[原文：20点]”）。
+
+### 4. 输出示例
+【评分项名称】：系统可用性 
+【权重/分值】：25分 
+【评分标准】：年平均故障时间≤1小时得满分；每增加1小时扣2分，最高扣10分。 
+【数据来源】：附件4-技术评分细则（第3页） 
+【备注】：参考GB/T 20944标准，需提供第三方测试报告。
+【评分项名称】：响应时间
+【权重/分分】：15分 [原文：15%]
+【评分标准】：≤50ms得满分；每增加10ms扣1分。
+【数据来源】：第6.1.2条
+
+### 5. 验证步骤
+提取完成后，执行以下自检：
+- [ ] 所有技术评分项是否覆盖（无遗漏）？
+- [ ] 权重总和是否与文档声明的技术分总分一致（如“技术部分共60分”）？
+- [ ] 是否有条目需人工确认（标注“[需人工确认]”）？
+
+直接返回提取结果，除此之外不输出任何其他内容
 """
             
             analysis_type_cn = "项目概述" if request.analysis_type == AnalysisType.OVERVIEW else "技术评分要求"

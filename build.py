@@ -143,6 +143,9 @@ pydantic==2.5.0
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
 aiofiles==23.2.1
+pdfplumber==0.11.7
+pymupdf==1.26.4
+docx2python==3.5.0
 """
     
     with open("requirements_build.txt", "w", encoding="utf-8") as f:
@@ -214,6 +217,15 @@ hiddenimports = [
     'docx.oxml.ns',
     'PyPDF2',
     'PyPDF2.generic',
+    'pdfplumber',
+    'pdfplumber.page',
+    'pdfplumber.table',
+    'pdfplumber.utils',
+    'fitz',
+    'pymupdf',
+    'docx2python',
+    'docx2python.iterators',
+    'paragraphs',
     'pydantic',
     'pydantic_settings',
     'multipart',
@@ -304,6 +316,9 @@ def build_exe():
         "--hidden-import=starlette.routing --hidden-import=starlette.responses --hidden-import=starlette.staticfiles "
         "--hidden-import=starlette.types --hidden-import=openai --hidden-import=docx --hidden-import=docx.oxml "
         "--hidden-import=docx.oxml.ns --hidden-import=PyPDF2 --hidden-import=PyPDF2.generic "
+        "--hidden-import=pdfplumber --hidden-import=pdfplumber.page --hidden-import=pdfplumber.table "
+        "--hidden-import=pdfplumber.utils --hidden-import=fitz --hidden-import=pymupdf "
+        "--hidden-import=docx2python --hidden-import=docx2python.iterators --hidden-import=paragraphs "
         "--hidden-import=pydantic --hidden-import=pydantic_settings --hidden-import=multipart "
         "--hidden-import=aiofiles --hidden-import=dotenv --hidden-import=json --hidden-import=pathlib "
         "--hidden-import=asyncio --hidden-import=signal --hidden-import=atexit "
