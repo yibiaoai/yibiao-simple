@@ -30,10 +30,63 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
   const [localOverview, setLocalOverview] = useState(projectOverview);
   const [localRequirements, setLocalRequirements] = useState(techRequirements);
   
+
+  // 处理换行符的函数 - 只做基本转换
+  const normalizeLineBreaks = (text: string) => {
+    if (!text) return text;
+    
+    return text
+      .replace(/\\n/g, '\n')  // 将字符串 \n 转换为实际换行符
+      .replace(/\r\n/g, '\n') // Windows换行符
+      .replace(/\r/g, '\n');  // Mac换行符
+  };
+  
   // 流式显示状态
   const [currentAnalysisStep, setCurrentAnalysisStep] = useState<'overview' | 'requirements' | null>(null);
   const [streamingOverview, setStreamingOverview] = useState('');
   const [streamingRequirements, setStreamingRequirements] = useState('');
+
+  // 公共的 ReactMarkdown 组件配置
+  const markdownComponents = {
+    p: ({ children }: any) => <p className="mb-3 leading-relaxed text-sm" style={{whiteSpace: 'pre-wrap', lineHeight: '1.5'}}>{children}</p>,
+    ul: ({ children }: any) => <ul className="mb-4 pl-5 space-y-1.5 list-disc">{children}</ul>,
+    ol: ({ children }: any) => <ol className="mb-4 pl-5 space-y-1.5 list-decimal">{children}</ol>,
+    li: ({ children }: any) => <li className="text-sm leading-relaxed">{children}</li>,
+    h1: ({ children }: any) => <h1 className="text-lg font-semibold mb-3 text-gray-900 border-b border-gray-200 pb-2">{children}</h1>,
+    h2: ({ children }: any) => <h2 className="text-base font-semibold mb-2 text-gray-900">{children}</h2>,
+    h3: ({ children }: any) => <h3 className="text-sm font-semibold mb-2 text-gray-800">{children}</h3>,
+    strong: ({ children }: any) => <strong className="font-semibold text-gray-900">{children}</strong>,
+    em: ({ children }: any) => <em className="italic text-gray-700">{children}</em>,
+    blockquote: ({ children }: any) => <blockquote className="border-l-4 border-green-200 pl-4 my-3 italic text-gray-600">{children}</blockquote>,
+    code: ({ children }: any) => <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>,
+    table: ({ children }: any) => <table className="w-full border-collapse border border-gray-300 my-3">{children}</table>,
+    thead: ({ children }: any) => <thead className="bg-gray-50">{children}</thead>,
+    th: ({ children }: any) => <th className="border border-gray-300 px-3 py-2 text-left font-semibold text-xs">{children}</th>,
+    td: ({ children }: any) => <td className="border border-gray-300 px-3 py-2 text-xs">{children}</td>,
+    br: () => <br className="my-1" />,
+    text: ({ children }: any) => <span style={{whiteSpace: 'pre-wrap'}}>{children}</span>,
+  };
+
+  // 流式显示的紧凑样式配置
+  const streamingComponents = {
+    p: ({ children }: any) => <p className="mb-2 leading-tight text-xs text-blue-400" style={{whiteSpace: 'pre-wrap', lineHeight: '1.3'}}>{children}</p>,
+    ul: ({ children }: any) => <ul className="mb-2 pl-3 space-y-0.5 list-disc text-blue-400">{children}</ul>,
+    ol: ({ children }: any) => <ol className="mb-2 pl-3 space-y-0.5 list-decimal text-blue-400">{children}</ol>,
+    li: ({ children }: any) => <li className="text-xs leading-tight text-blue-400">{children}</li>,
+    h1: ({ children }: any) => <h1 className="text-sm font-semibold mb-2 text-blue-500 border-b border-blue-200 pb-1">{children}</h1>,
+    h2: ({ children }: any) => <h2 className="text-xs font-semibold mb-1.5 text-blue-500">{children}</h2>,
+    h3: ({ children }: any) => <h3 className="text-xs font-semibold mb-1 text-blue-400">{children}</h3>,
+    strong: ({ children }: any) => <strong className="font-semibold text-blue-500">{children}</strong>,
+    em: ({ children }: any) => <em className="italic text-blue-400">{children}</em>,
+    blockquote: ({ children }: any) => <blockquote className="border-l-2 border-blue-300 pl-2 my-1.5 italic text-blue-400">{children}</blockquote>,
+    code: ({ children }: any) => <code className="bg-blue-50 px-1 py-0.5 rounded text-xs font-mono text-blue-400">{children}</code>,
+    table: ({ children }: any) => <table className="w-full border-collapse border border-blue-200 my-2">{children}</table>,
+    thead: ({ children }: any) => <thead className="bg-blue-50">{children}</thead>,
+    th: ({ children }: any) => <th className="border border-blue-200 px-2 py-1 text-left font-semibold text-xs text-blue-500">{children}</th>,
+    td: ({ children }: any) => <td className="border border-blue-200 px-2 py-1 text-xs text-blue-400">{children}</td>,
+    br: () => <br className="my-0.5" />,
+    text: ({ children }: any) => <span className="text-blue-400" style={{whiteSpace: 'pre-wrap'}}>{children}</span>,
+  };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -122,10 +175,12 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
 
       await processStream(overviewResponse, (chunk) => {
         overviewResult += chunk;
-        setStreamingOverview(overviewResult);
+        const normalizedContent = normalizeLineBreaks(overviewResult);
+        setStreamingOverview(normalizedContent);
       });
 
-      setLocalOverview(overviewResult);
+      const finalOverview = normalizeLineBreaks(overviewResult);
+      setLocalOverview(finalOverview);
 
       // 第二步：分析技术评分要求
       setCurrentAnalysisStep('requirements');
@@ -136,10 +191,12 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
 
       await processStream(requirementsResponse, (chunk) => {
         requirementsResult += chunk;
-        setStreamingRequirements(requirementsResult);
+        const normalizedContent = normalizeLineBreaks(requirementsResult);
+        setStreamingRequirements(normalizedContent);
       });
 
-      setLocalRequirements(requirementsResult);
+      const finalRequirements = normalizeLineBreaks(requirementsResult);
+      setLocalRequirements(finalRequirements);
 
       // 完成后更新父组件状态
       onAnalysisComplete(overviewResult, requirementsResult);
@@ -238,13 +295,13 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
 
           {/* 流式分析内容显示 */}
           {analyzing && (currentAnalysisStep === 'overview' && streamingOverview || currentAnalysisStep === 'requirements' && streamingRequirements) && (
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
-              <h4 className="text-sm font-medium text-blue-800 mb-2">
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 className="text-sm font-medium text-blue-800 mb-3">
                 {currentAnalysisStep === 'overview' ? '正在分析项目概述...' : '正在分析技术评分要求...'}
               </h4>
-              <div className="bg-white p-3 rounded border max-h-48 overflow-y-auto">
-                <div className="text-xs text-gray-700 whitespace-pre-wrap">
-                  <ReactMarkdown>
+              <div className="bg-white p-3 rounded-lg border border-gray-200 max-h-64 overflow-y-auto shadow-sm">
+                <div className="text-xs prose prose-sm max-w-none">
+                  <ReactMarkdown components={streamingComponents}>
                     {currentAnalysisStep === 'overview' ? streamingOverview : streamingRequirements}
                   </ReactMarkdown>
                 </div>
@@ -252,28 +309,33 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
             </div>
           )}
 
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* 项目概述 */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-3">
                 项目概述
               </label>
-              <div className="w-full p-3 border border-gray-300 rounded-md focus-within:ring-blue-500 focus-within:border-blue-500 text-sm max-h-80 overflow-y-auto bg-gray-50">
-                <ReactMarkdown>
-                  {localOverview || '项目概述将在这里显示...'}
-                </ReactMarkdown>
+              <div className="w-full p-4 border border-gray-300 rounded-lg focus-within:ring-blue-500 focus-within:border-blue-500 max-h-80 overflow-y-auto bg-white shadow-sm">
+                <div className="prose prose-sm max-w-none text-gray-800">
+                  <ReactMarkdown components={markdownComponents}>
+                    {localOverview || '项目概述将在这里显示...'}
+                  </ReactMarkdown>
+                </div>
               </div>
             </div>
 
             {/* 技术评分要求 */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-3">
                 技术评分要求
               </label>
-              <div className="w-full p-3 border border-gray-300 rounded-md focus-within:ring-green-500 focus-within:border-green-500 text-sm max-h-80 overflow-y-auto bg-gray-50">
-                <ReactMarkdown>
-                  {localRequirements || '技术评分要求将在这里显示...'}
-                </ReactMarkdown>
+              <div className="w-full p-4 border border-gray-300 rounded-lg focus-within:ring-green-500 focus-within:border-green-500 max-h-80 overflow-y-auto bg-white shadow-sm">
+                <div className="prose prose-sm max-w-none text-gray-800">
+                  <ReactMarkdown components={markdownComponents}>
+                    {localRequirements || '技术评分要求将在这里显示...'}
+                  </ReactMarkdown>
+                </div>
               </div>
             </div>
           </div>
