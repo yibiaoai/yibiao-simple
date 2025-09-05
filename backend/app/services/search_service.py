@@ -684,6 +684,7 @@ class SearchService:
         if LANGCHAIN_AVAILABLE:
             try:
                 loader = WebBaseLoader(url)
+                loader.default_parser = "html.parser"
                 documents = loader.load()
                 
                 if documents:
