@@ -113,20 +113,6 @@ export const outlineApi = {
 
 // 内容相关API
 export const contentApi = {
-  // 生成内容
-  generateContent: (data: ContentGenerationRequest) =>
-    api.post('/api/content/generate', data),
-
-  // 流式生成内容
-  generateContentStream: (data: ContentGenerationRequest) =>
-    fetch(`${API_BASE_URL}/api/content/generate-stream`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    }),
-
   // 生成单章节内容
   generateChapterContent: (data: ChapterContentRequest) =>
     api.post('/api/content/generate-chapter', data),
