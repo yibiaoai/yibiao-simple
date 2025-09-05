@@ -1,4 +1,4 @@
-fastapi==0.116.1
+﻿fastapi==0.116.1
 uvicorn[standard]==0.35.0
 python-multipart==0.0.20
 openai==1.106.1
@@ -8,12 +8,12 @@ pydantic==2.11.7
 pydantic-settings==2.10.1
 python-dotenv==1.1.1
 aiofiles==24.1.0
+# 版本兼容性修复
+anyio==4.4.0
 # 新增的文档处理库
 pdfplumber==0.11.7
 pymupdf==1.26.4
 docx2python==3.5.0
-# MCP服务支持
-mcp==1.13.1
 requests==2.32.5
 asyncio-throttle==1.0.2
 duckduckgo-search==8.1.1
@@ -25,3 +25,5 @@ beautifulsoup4==4.13.5
 playwright==1.51.0
 seleniumbase==4.33.3
 undetected-chromedriver==3.5.5
+# MCP服务支持
+mcp==1.13.1

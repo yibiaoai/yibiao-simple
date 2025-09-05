@@ -133,26 +133,30 @@ def create_requirements():
     print("="*50)
     
     requirements = """
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-python-multipart==0.0.6
-openai==1.101.0
-python-docx==0.8.11
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+python-multipart==0.0.20
+openai==1.106.1
+python-docx==1.2.0
 PyPDF2==3.0.1
-pydantic==2.5.0
-pydantic-settings==2.1.0
-python-dotenv==1.0.0
-aiofiles==23.2.1
+pydantic==2.11.7
+pydantic-settings==2.10.1
+python-dotenv==1.1.1
+aiofiles==24.1.0
+anyio==4.4.0
 pdfplumber==0.11.7
 pymupdf==1.26.4
 docx2python==3.5.0
-mcp>=1.0.0
-requests>=2.31.0
-asyncio-throttle
-duckduckgo-search
-langchain>=0.1.0
-langchain-community>=0.1.0
-beautifulsoup4>=4.12.0
+requests==2.32.5
+asyncio-throttle==1.0.2
+duckduckgo-search==8.1.1
+langchain==0.3.27
+langchain-community==0.3.29
+beautifulsoup4==4.13.5
+playwright==1.51.0
+seleniumbase==4.33.3
+undetected-chromedriver==3.5.5
+mcp==1.13.1
 """
     
     with open("requirements_build.txt", "w", encoding="utf-8") as f:
@@ -250,6 +254,14 @@ hiddenimports = [
     'langchain.document_loaders',
     'bs4',
     'beautifulsoup4',
+    'playwright',
+    'playwright.async_api',
+    'playwright.sync_api',
+    'seleniumbase',
+    'seleniumbase.core',
+    'seleniumbase.fixtures',
+    'undetected_chromedriver',
+    'asyncio_throttle',
 ]
 
 a = Analysis(
@@ -342,6 +354,9 @@ def build_exe():
         "--hidden-import=langchain --hidden-import=langchain_community "
         "--hidden-import=langchain_community.document_loaders --hidden-import=langchain_community.document_loaders.web_base "
         "--hidden-import=langchain.document_loaders --hidden-import=bs4 --hidden-import=beautifulsoup4 "
+        "--hidden-import=playwright --hidden-import=playwright.async_api --hidden-import=playwright.sync_api "
+        "--hidden-import=seleniumbase --hidden-import=seleniumbase.core --hidden-import=seleniumbase.fixtures "
+        "--hidden-import=undetected_chromedriver --hidden-import=asyncio_throttle "
         "--console app_launcher.py"
     )
     
