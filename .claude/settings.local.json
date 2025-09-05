@@ -7,7 +7,8 @@
       "Bash(npm install:*)",
       "Bash(npx tailwindcss init:*)",
       "Bash(python:*)",
-      "Bash(del main_app.py components page_modules services requirements.txt user_config.json)"
+      "Bash(del main_app.py components page_modules services requirements.txt user_config.json)",
+      "Bash(pip index versions:*)"
     ],
     "deny": [],
     "ask": []

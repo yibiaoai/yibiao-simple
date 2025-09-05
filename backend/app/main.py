@@ -8,7 +8,7 @@ import fastapi.middleware.cors
 import starlette.middleware.cors
 
 from .config import settings
-from .routers import config, document, outline, content
+from .routers import config, document, outline, content, search
 
 # 创建FastAPI应用实例
 app = FastAPI(
@@ -31,6 +31,7 @@ app.include_router(config.router)
 app.include_router(document.router)
 app.include_router(outline.router)
 app.include_router(content.router)
+app.include_router(search.router)
 
 # 健康检查端点
 @app.get("/health")

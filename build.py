@@ -146,6 +146,13 @@ aiofiles==23.2.1
 pdfplumber==0.11.7
 pymupdf==1.26.4
 docx2python==3.5.0
+mcp>=1.0.0
+requests>=2.31.0
+asyncio-throttle
+duckduckgo-search
+langchain>=0.1.0
+langchain-community>=0.1.0
+beautifulsoup4>=4.12.0
 """
     
     with open("requirements_build.txt", "w", encoding="utf-8") as f:
@@ -234,6 +241,15 @@ hiddenimports = [
     'json',
     'pathlib',
     'asyncio',
+    'duckduckgo_search',
+    'requests',
+    'langchain',
+    'langchain_community',
+    'langchain_community.document_loaders',
+    'langchain_community.document_loaders.web_base',
+    'langchain.document_loaders',
+    'bs4',
+    'beautifulsoup4',
 ]
 
 a = Analysis(
@@ -322,6 +338,10 @@ def build_exe():
         "--hidden-import=pydantic --hidden-import=pydantic_settings --hidden-import=multipart "
         "--hidden-import=aiofiles --hidden-import=dotenv --hidden-import=json --hidden-import=pathlib "
         "--hidden-import=asyncio --hidden-import=signal --hidden-import=atexit "
+        "--hidden-import=duckduckgo_search --hidden-import=requests "
+        "--hidden-import=langchain --hidden-import=langchain_community "
+        "--hidden-import=langchain_community.document_loaders --hidden-import=langchain_community.document_loaders.web_base "
+        "--hidden-import=langchain.document_loaders --hidden-import=bs4 --hidden-import=beautifulsoup4 "
         "--console app_launcher.py"
     )
     
