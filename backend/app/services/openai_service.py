@@ -5,6 +5,8 @@ import json
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
+from ..utils.outline_util import get_random_indexes, calculate_nodes_distribution,generate_one_outline_json_by_level1
+from ..utils.json_util import check_json
 
 class OpenAIService:
     """OpenAI服务类"""
@@ -57,70 +59,6 @@ class OpenAIService:
         except Exception as e:
             yield f"错误: {str(e)}"
     
-
-    
-    async def generate_outline(self, overview: str, requirements: str) -> Dict[str, Any]:
-        """生成标书目录结构"""
-        system_prompt = """你是一个专业的标书编写专家。根据提供的项目概述和技术评分要求，生成投标文件中技术标部分的目录结构。
-
-要求：
-1. 目录结构要全面覆盖技术标的所有必要章节
-2. 章节名称要专业、准确，符合投标文件规范
-3. 一级目录名称要与技术评分要求中的章节名称一致，如果技术评分要求中没有章节名称，则结合技术评分要求中的内容，生成一级目录名称
-4. 一共包括三级目录
-5. 返回标准JSON格式，包含章节编号、标题、描述和子章节
-6. 除了JSON结果外，不要输出任何其他内容
-
-JSON格式要求：
-{
-  "outline": [
-    {
-      "id": "1",
-      "title": "",
-      "description": "",
-      "children": [
-        {
-          "id": "1.1",
-          "title": "",
-          "description": "",
-          "children":[
-              {
-                "id": "1.1.1",
-                "title": "",
-                "description": ""
-              }
-          ]
-        }
-      ]
-    }
-  ]
-}
-"""
-        
-        user_prompt = f"""请基于以下项目信息生成标书目录结构：
-
-项目概述：
-{overview}
-
-技术评分要求：
-{requirements}
-
-请生成完整的技术标目录结构，确保覆盖所有技术评分要点。"""
-        
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-        
-        # 收集所有流式响应
-        full_content = ""
-        async for chunk in self.stream_chat_completion(messages, temperature=0.7, response_format={"type": "json_object"}):
-            full_content += chunk
-        
-        try:
-            return json.loads(full_content.strip())
-        except json.JSONDecodeError:
-            raise Exception("生成的目录格式不正确")
     
     async def generate_content_for_outline(self, outline: Dict[str, Any], project_overview: str = "") -> Dict[str, Any]:
         """为目录结构生成内容"""
@@ -251,3 +189,147 @@ JSON格式要求：
         except Exception as e:
             print(f"生成章节内容时出错: {str(e)}")
             yield f"错误: {str(e)}"
+            
+    async def generate_outline_v2(self, overview: str, requirements: str) -> Dict[str, Any]:
+        schema_json=json.dumps([
+            {
+                "rating_item":"原评分项",
+                "new_title":"根据评分项修改的标题"
+            }
+        ])
+
+        system_prompt=f"""
+            ### Role
+            你是专业的标书编写专家，擅长根据项目需求编写标书。
+            
+            ### Task
+            1. 根据得到的项目概述(overview)和评分要求(requirements)，撰写技术标部分的一级提纲
+            
+            ### Instructions
+            1. 只设计一级标题，数量要和"评分要求"一一对应
+            2. 一级标题名称要进行简单修改，不能完全使用"评分要求"中的文字
+
+            
+            ### Output Format in JSON
+            {schema_json}
+            
+            """
+        user_prompt=f"""
+            ### 项目信息
+            
+            <overview>
+            {overview}
+            </overview>
+
+            <requirements>
+            {requirements}
+            </requirements>
+            
+            
+            直接返回json，不要任何额外说明或格式标记
+            
+            """
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        full_content = ""
+        async for chunk in self.stream_chat_completion(messages, temperature=0.7, response_format={"type": "json_object"}):
+            full_content += chunk
+        
+        level_l1 = json.loads(full_content.strip())
+        
+        expected_word_count=100000
+        leaf_node_count = expected_word_count // 1500
+        
+        # 随机重点章节
+        index1,index2=get_random_indexes(len(level_l1))
+        
+        nodes_distribution = calculate_nodes_distribution(len(level_l1),(index1,index2),leaf_node_count)
+        
+        # 并发生成每个一级节点的提纲，保持结果顺序
+        tasks = [
+            self.process_level1_node(i, level1_node, nodes_distribution, level_l1, overview, requirements)
+            for i, level1_node in enumerate(level_l1)
+        ]
+        outline = await asyncio.gather(*tasks)
+        
+        
+        
+        return {"outline": outline}
+    
+    async def process_level1_node(self,i, level1_node,nodes_distribution,level_l1,overview,requirements):
+        """处理单个一级节点的函数"""
+
+        # 生成json
+        json_outline = generate_one_outline_json_by_level1(level1_node["new_title"], i+1, nodes_distribution)
+        print(f"正在处理第{i+1}章: {level1_node['new_title']}")
+        
+        # 其他标题
+        other_outline = "\n".join([f"{j+1}. {node['new_title']}" 
+                            for j, node in enumerate(level_l1) 
+                            if j!= i])
+
+        system_prompt=f"""
+    ### 角色
+    你是专业的标书编写专家，擅长根据项目需求编写标书。
+    
+    ### 任务
+    1. 根据得到项目概述(overview)、评分要求(requirements)补全标书的提纲的二三级目录
+    
+    ### 说明
+    1. 你将会得到一段json，这是提纲的其中一个章节，你需要再原结构上补全标题(title)和描述(description)
+    2. 二级标题根据一级标题撰写,三级标题根据二级标题撰写
+    3. 补全的内容要参考项目概述(overview)、评分要求(requirements)等项目信息
+    4. 你还会收到其他章节的标题(other_outline)，你需要确保本章节的内容不会包含其他章节的内容
+    
+    ### 注意事项
+    在原json上补全信息，禁止修改json结构，禁止修改一级标题
+
+    ### Output Format in JSON
+    {json_outline}
+    
+    """
+        user_prompt=f"""
+    ### 项目信息
+
+    <overview>
+    {overview}
+    </overview>
+
+    <requirements>
+    {requirements}
+    </requirements>
+    
+    <other_outline>
+    {other_outline}
+    </other_outline>
+    
+    
+    直接返回json，不要任何额外说明或格式标记
+    
+    """
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        max_retries = 3
+        attempt = 0
+        last_error_msg = ""
+        full_content = ""
+        while True:
+            full_content = ""
+            async for chunk in self.stream_chat_completion(messages, temperature=0.7, response_format={"type": "json_object"}):
+                full_content += chunk
+            isok, error_msg = check_json(str(full_content), json_outline)
+            if isok:
+                break
+            last_error_msg = error_msg
+            if attempt >= max_retries:
+                print(f"check_json 校验失败，已达到最大重试次数({max_retries})：{last_error_msg}")
+                break
+            attempt += 1
+            print(f"check_json 校验失败，进行第 {attempt}/{max_retries} 次重试：{last_error_msg}")
+            await asyncio.sleep(0.5)
+
+        return json.loads(full_content.strip())

@@ -282,98 +282,6 @@ class SearchService:
         
         return content
 
-    def _extract_zhihu_content(self, url: str, max_chars: int) -> Dict[str, str]:
-        """
-        专门处理知乎内容提取
-        
-        Args:
-            url: 知乎链接
-            max_chars: 最大字符数限制
-            
-        Returns:
-            包含url、title、content的字典
-        """
-        try:
-            # 知乎专用请求头
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Referer': 'https://www.zhihu.com/',
-                'Cookie': 'z_c0=2|1:0|10:123456789|4:z_c0|92:Mi4xYWExYWExYWExYWExYWExYWExYWExYWExYWExYWExYWExYWExYWExYWExYWExYWExYWExYWE=|dummy',
-            }
-            
-            session = requests.Session()
-            session.headers.update(headers)
-            
-            # 先访问首页获取cookies
-            session.get('https://www.zhihu.com/', timeout=15)
-            time.sleep(random.uniform(2, 5))
-            
-            # 再访问目标页面
-            response = session.get(url, timeout=30, allow_redirects=True)
-            response.raise_for_status()
-            
-            # 如果仍然被阻止，尝试使用API接口（如果有的话）
-            if response.status_code == 403:
-                raise Exception("知乎反爬虫阻止访问")
-            
-            response.encoding = 'utf-8'
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # 提取标题
-            title = "知乎内容"
-            title_selectors = ['.QuestionHeader-title', 'h1', 'title']
-            for selector in title_selectors:
-                title_tag = soup.select_one(selector)
-                if title_tag:
-                    title = title_tag.get_text().strip()
-                    break
-            
-            # 提取内容
-            content = ""
-            content_selectors = [
-                '.QuestionRichText', '.RichContent-inner', '.QuestionAnswer-content',
-                '.AnswerItem-content', '.Post-RichTextContainer', '.RichText-inner'
-            ]
-            
-            for selector in content_selectors:
-                elements = soup.select(selector)
-                if elements:
-                    contents = []
-                    for element in elements[:3]:  # 最多取3个回答
-                        text = element.get_text(separator='\n', strip=True)
-                        if len(text) > 50:
-                            contents.append(text)
-                    if contents:
-                        content = '\n\n'.join(contents)
-                        break
-            
-            # 如果没有找到特定内容，尝试通用方法
-            if len(content) < 100:
-                for script in soup(["script", "style", "nav", "header", "footer"]):
-                    script.decompose()
-                content = soup.get_text(separator=' ', strip=True)
-                content = re.sub(r'\s+', ' ', content)
-            
-            # 限制长度
-            if len(content) > max_chars:
-                content = content[:max_chars] + "...(内容已截断)"
-            
-            logger.info(f"成功读取知乎内容: {url}, 标题: {title}, 内容长度: {len(content)}")
-            
-            return {
-                "url": url,
-                "title": title,
-                "content": content or "未能提取到主要内容，可能是因为页面需要登录或内容由JavaScript动态加载"
-            }
-            
-        except Exception as e:
-            logger.error(f"读取知乎内容失败 {url}: {str(e)}")
-            # 抛出异常而不是返回错误内容，让调用方知道这是失败
-            raise Exception(f"知乎反爬虫限制：{str(e)}。建议：1)手动访问获取内容 2)使用其他平台搜索相关内容")
-
     def _extract_content_with_requests(self, url: str, max_chars: int) -> Dict[str, str]:
         """
         使用requests和BeautifulSoup提取网页内容
@@ -385,10 +293,7 @@ class SearchService:
         Returns:
             包含url、title、content的字典
         """
-        # 针对知乎的特殊处理
-        if 'zhihu.com' in url:
-            return self._extract_zhihu_content(url, max_chars)
-        
+
         try:
             # 设置请求头，模拟浏览器访问
             user_agent = self._get_random_user_agent()

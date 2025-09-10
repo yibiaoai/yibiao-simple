@@ -101,7 +101,7 @@ export const outlineApi = {
 
   // 流式生成目录
   generateOutlineStream: (data: OutlineRequest) =>
-    fetch(`${API_BASE_URL}/api/outline/generate-stream`, {
+    fetch(`${API_BASE_URL}/api/outline/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

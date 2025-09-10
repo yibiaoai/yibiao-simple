@@ -32,7 +32,7 @@
 
 ## 🌐 官方网站
 
-**访问官网**: [https://yibiao.pro](https://yibiao.pro)
+**在线体验**: [https://yibiao.pro](https://yibiao.pro)
 
 获取更多产品信息、在线体验和技术支持。
 
@@ -132,6 +132,10 @@ build.bat
 ## 📚 API文档
 
 启动应用后访问 `http://localhost:8000/docs` 查看完整的FastAPI自动生成的API文档。
+
+
+## 📌代办任务
+- [ ] 录入预期字数
 
 ## 🤝 贡献指南
 
