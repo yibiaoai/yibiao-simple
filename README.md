@@ -47,7 +47,7 @@
 ### ⬇️ 下载安装
 
 1. **直接下载**：从 [GitHub Releases](https://github.com/yibiaoai/yibiao-simple/releases) 下载最新版本的exe文件
-2. **运行程序**：双击 `yibiao-simple v1.0.2.exe` 即可启动应用
+2. **运行程序**：双击 `yibiao-simple.exe` 即可启动应用
 3. **配置AI**：首次使用需要配置API Key密钥（推荐DeepSeek）
 
 

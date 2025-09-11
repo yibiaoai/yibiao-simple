@@ -36,7 +36,7 @@ if %errorlevel% eq 0 (
     echo.
     echo ================================================
     echo 构建成功！
-    echo exe文件位于: dist\AI写标书助手.exe
+    echo exe文件位于: dist\yibiao-simple.exe
     echo ================================================
 ) else (
     echo.
