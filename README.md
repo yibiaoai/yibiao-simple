@@ -166,5 +166,5 @@ build.bat
 
 
 <p align="center">
-  Made with ❤️ by 易标团队
+  Made with ❤️ by 易标团队 
 </p>
