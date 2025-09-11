@@ -14,12 +14,8 @@ import random
 import time
 import html
 
-try:
-    from langchain_community.document_loaders import WebBaseLoader
-    LANGCHAIN_AVAILABLE = True
-except ImportError:
-    LANGCHAIN_AVAILABLE = False
-    WebBaseLoader = None
+LANGCHAIN_AVAILABLE = False
+WebBaseLoader = None
 
 # 导入现代化爬虫工具
 try:
@@ -574,7 +570,7 @@ class SearchService:
 
     def load_url_content(self, url: str, max_chars: int = 5000) -> Dict[str, str]:
         """
-        读取链接内容，使用多种策略：WebBaseLoader -> requests -> Playwright -> SeleniumBase
+        读取链接内容，使用多种策略：requests -> Playwright -> SeleniumBase
         
         Args:
             url: 要读取的网页链接
@@ -585,43 +581,14 @@ class SearchService:
         """
         errors = []
         
-        # 策略1: 优先尝试WebBaseLoader（轻量级，速度快）
-        if LANGCHAIN_AVAILABLE:
-            try:
-                loader = WebBaseLoader(url)
-                loader.default_parser = "html.parser"
-                documents = loader.load()
-                
-                if documents:
-                    doc = documents[0]
-                    content = doc.page_content
-                    
-                    # 检查内容质量
-                    if content and len(content.strip()) > 50:
-                        if len(content) > max_chars:
-                            content = content[:max_chars] + "...(内容已截断)"
-                        
-                        title = doc.metadata.get("title", url.split("/")[-1] or "网页内容")
-                        
-                        logger.info(f"WebBaseLoader成功读取: {url}, 内容长度: {len(content)}")
-                        
-                        return {
-                            "url": url,
-                            "title": title,
-                            "content": content
-                        }
-            except Exception as e:
-                errors.append(f"WebBaseLoader: {str(e)}")
-                logger.warning(f"WebBaseLoader失败，尝试下一种方法: {str(e)}")
-        
-        # 策略2: 尝试requests+BeautifulSoup
+        # 策略1: 使用requests+BeautifulSoup（默认首选）
         try:
             return self._extract_content_with_requests(url, max_chars)
         except Exception as e:
             errors.append(f"Requests: {str(e)}")
             logger.warning(f"Requests失败，尝试下一种方法: {str(e)}")
         
-        # 策略3: 尝试Playwright（处理JavaScript渲染的网站）
+        # 策略2: 尝试Playwright（处理JavaScript渲染的网站）
         if PLAYWRIGHT_AVAILABLE:
             try:
                 # 需要在async环境中运行
@@ -638,7 +605,7 @@ class SearchService:
                 errors.append(f"Playwright: {str(e)}")
                 logger.warning(f"Playwright失败，尝试下一种方法: {str(e)}")
         
-        # 策略4: 尝试SeleniumBase（最后的选择，资源消耗大）
+        # 策略3: 尝试SeleniumBase（最后的选择，资源消耗大）
         if SELENIUMBASE_AVAILABLE:
             try:
                 return self._extract_with_seleniumbase(url, max_chars)

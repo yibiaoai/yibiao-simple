@@ -8,19 +8,17 @@ pydantic==2.11.7
 pydantic-settings==2.10.1
 python-dotenv==1.1.1
 aiofiles==24.1.0
-# 版本兼容性修复
-anyio==4.4.0
+# 版本兼容性（放宽范围给依赖解析）
+anyio>=4,<5
 # 新增的文档处理库
 pdfplumber==0.11.7
 pymupdf==1.26.4
 docx2python==3.5.0
-requests==2.32.5
+requests==2.32.3
 asyncio-throttle==1.0.2
 duckduckgo-search==8.1.1
-# LangChain支持
-langchain==0.3.27
-langchain-community==0.3.29
-beautifulsoup4==4.13.5
+# LangChain支持（已移除）
+beautifulsoup4==4.12.3
 # 增强爬虫能力
 playwright==1.51.0
 seleniumbase==4.33.3

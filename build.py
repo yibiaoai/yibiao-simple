@@ -143,16 +143,14 @@ pydantic==2.11.7
 pydantic-settings==2.10.1
 python-dotenv==1.1.1
 aiofiles==24.1.0
-anyio==4.4.0
+anyio>=4,<5
 pdfplumber==0.11.7
 pymupdf==1.26.4
 docx2python==3.5.0
-requests==2.32.5
+requests==2.32.3
 asyncio-throttle==1.0.2
 duckduckgo-search==8.1.1
-langchain==0.3.27
-langchain-community==0.3.29
-beautifulsoup4==4.13.5
+beautifulsoup4==4.12.3
 playwright==1.51.0
 seleniumbase==4.33.3
 undetected-chromedriver==3.5.5
@@ -247,11 +245,6 @@ hiddenimports = [
     'asyncio',
     'duckduckgo_search',
     'requests',
-    'langchain',
-    'langchain_community',
-    'langchain_community.document_loaders',
-    'langchain_community.document_loaders.web_base',
-    'langchain.document_loaders',
     'bs4',
     'beautifulsoup4',
     'playwright',
@@ -319,12 +312,12 @@ def build_exe():
     
     # 安装所需依赖
     print("安装构建依赖...")
-    if not run_command("pip install pyinstaller"):
+    if not run_command(f"{sys.executable} -m pip install pyinstaller"):
         print("安装PyInstaller失败")
         return False
     
     # 安装应用依赖
-    if not run_command("pip install -r backend/requirements.txt"):
+    if not run_command(f"{sys.executable} -m pip install -r backend/requirements.txt"):
         print("安装应用依赖失败")
         return False
     
@@ -351,9 +344,7 @@ def build_exe():
         "--hidden-import=aiofiles --hidden-import=dotenv --hidden-import=json --hidden-import=pathlib "
         "--hidden-import=asyncio --hidden-import=signal --hidden-import=atexit "
         "--hidden-import=duckduckgo_search --hidden-import=requests "
-        "--hidden-import=langchain --hidden-import=langchain_community "
-        "--hidden-import=langchain_community.document_loaders --hidden-import=langchain_community.document_loaders.web_base "
-        "--hidden-import=langchain.document_loaders --hidden-import=bs4 --hidden-import=beautifulsoup4 "
+        "--hidden-import=bs4 --hidden-import=beautifulsoup4 "
         "--hidden-import=playwright --hidden-import=playwright.async_api --hidden-import=playwright.sync_api "
         "--hidden-import=seleniumbase --hidden-import=seleniumbase.core --hidden-import=seleniumbase.fixtures "
         "--hidden-import=undetected_chromedriver --hidden-import=asyncio_throttle "
