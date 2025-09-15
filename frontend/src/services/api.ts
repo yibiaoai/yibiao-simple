@@ -29,8 +29,6 @@ export interface FileUploadResponse {
   success: boolean;
   message: string;
   file_content?: string;
-  docx_structure?: any;
-  aligned_outline?: any;
 }
 
 export interface AnalysisRequest {
@@ -128,27 +126,6 @@ export const contentApi = {
       },
       body: JSON.stringify(data),
     }),
-};
-
-// 方案扩写相关API
-export const expandApi = {
-  // 上传方案文件并读取内容
-  uploadPlanFile: (file: File, outline?: any, _mode?: 'gpu' | 'cpu' | 'none') => {
-    const formData = new FormData();
-    formData.append('file', file);
-    if (outline) {
-      try {
-        formData.append('outline', JSON.stringify(outline));
-      } catch (e) {
-        // 忽略序列化错误
-      }
-    }
-    return api.post<FileUploadResponse>('/api/expand/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-  },
 };
 
 export default api;

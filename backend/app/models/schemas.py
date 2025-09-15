@@ -31,8 +31,6 @@ class FileUploadResponse(BaseModel):
     success: bool
     message: str
     file_content: Optional[str] = None
-    docx_structure: Optional[dict] = None
-    aligned_outline: Optional[dict] = None
 
 
 class AnalysisType(str, Enum):
@@ -89,14 +87,3 @@ class ErrorResponse(BaseModel):
     """错误响应"""
     error: str
     detail: Optional[str] = None
-
-
-class DocxParseResponse(BaseModel):
-    """DOCX 结构与样式解析结果"""
-    styles: List[Dict[str, Any]]
-    paragraphs: List[Dict[str, Any]]
-    headings: List[Dict[str, Any]]
-    tables: List[Dict[str, Any]]
-    images: List[Dict[str, Any]]
-    sections: List[Dict[str, Any]]
-    style_map: Dict[str, str]
