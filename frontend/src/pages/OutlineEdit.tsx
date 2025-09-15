@@ -1,10 +1,11 @@
 /**
  * 目录编辑页面
  */
-import React, { useState } from 'react';
+import React, { useState, useRef, forwardRef, useImperativeHandle } from 'react';
 import { OutlineData, OutlineItem } from '../types';
-import { outlineApi } from '../services/api';
+import { outlineApi, expandApi } from '../services/api';
 import { ChevronRightIcon, ChevronDownIcon, DocumentTextIcon, PencilIcon, TrashIcon, PlusIcon } from '@heroicons/react/24/outline';
+import PlanExpandModal from '../components/PlanExpandModal';
 
 interface OutlineEditProps {
   projectOverview: string;
@@ -13,12 +14,16 @@ interface OutlineEditProps {
   onOutlineGenerated: (outline: OutlineData) => void;
 }
 
-const OutlineEdit: React.FC<OutlineEditProps> = ({
+export type OutlineEditHandle = {
+  openPlanFilePicker: () => void;
+};
+
+const OutlineEdit = forwardRef<OutlineEditHandle, OutlineEditProps>(({ 
   projectOverview,
   techRequirements,
   outlineData,
   onOutlineGenerated,
-}) => {
+}, ref) => {
   const [generating, setGenerating] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -26,6 +31,11 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
   const [editingItem, setEditingItem] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [planUploading, setPlanUploading] = useState(false);
+  const [alignedOutline, setAlignedOutline] = useState<any | null>(null);
+  const [rawDocxStructure, setRawDocxStructure] = useState<any | null>(null);
+  const planFileInputRef = useRef<HTMLInputElement>(null);
+  const [planModalOpen, setPlanModalOpen] = useState(false);
 
   const handleGenerateOutline = async () => {
     if (!projectOverview || !techRequirements) {
@@ -109,6 +119,38 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
     }
   };
 
+  // 暴露给父组件的接口：触发文件选择（保留兼容），但默认用弹窗
+  useImperativeHandle(ref, () => ({
+    openPlanFilePicker: () => {
+      setPlanModalOpen(true);
+    }
+  }));
+
+  // 方案扩写：选择文件并上传
+  const handlePlanFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setPlanUploading(true);
+      setMessage(null);
+      const response = await expandApi.uploadPlanFile(file, outlineData);
+      if (response.data.success) {
+        setMessage({ type: 'success', text: '方案文档上传成功，已读取内容' });
+        setAlignedOutline(response.data.aligned_outline || null);
+        setRawDocxStructure(response.data.docx_structure || null);
+      } else {
+        setMessage({ type: 'error', text: response.data.message || '方案文档上传失败' });
+      }
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error?.response?.data?.detail || '方案文档上传失败' });
+    } finally {
+      setPlanUploading(false);
+      if (planFileInputRef.current) {
+        planFileInputRef.current.value = '';
+      }
+    }
+  };
+
 
   const toggleExpanded = (itemId: string) => {
     const newExpanded = new Set(expandedItems);
@@ -172,6 +214,20 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
     if (!outlineData) return;
     
     if (window.confirm('确定要删除这个目录项吗？')) {
+      // 工具：根据当前位置重拍编号（1, 1.1, 1.2, 2, 2.1 ...）
+      const reindexOutline = (items: OutlineItem[], prefix: string[] = []): OutlineItem[] => {
+        return items.map((item, idx) => {
+          const newIdParts = [...prefix, String(idx + 1)];
+          const newId = newIdParts.join('.');
+          const newChildren = item.children ? reindexOutline(item.children, newIdParts) : undefined;
+          return {
+            ...item,
+            id: newId,
+            children: newChildren,
+          } as OutlineItem;
+        });
+      };
+
       const deleteFromItems = (items: OutlineItem[]): OutlineItem[] => {
         return items.filter(item => {
           if (item.id === itemId) {
@@ -184,9 +240,12 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
         });
       };
 
+      // 先删除目标，再重拍编号
+      const pruned = deleteFromItems(outlineData.outline);
+      const renumbered = reindexOutline(pruned);
       const updatedData = {
         ...outlineData,
-        outline: deleteFromItems(outlineData.outline)
+        outline: renumbered,
       };
 
       onOutlineGenerated(updatedData);
@@ -459,7 +518,19 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
               '生成目录结构'
             )}
           </button>
-
+          <button
+            onClick={() => setPlanModalOpen(true)}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          >
+            方案扩写
+          </button>
+          <input
+            ref={planFileInputRef}
+            type="file"
+            accept=".pdf,.docx,.doc"
+            onChange={handlePlanFileSelect}
+            className="hidden"
+          />
         </div>
 
         {!projectOverview && !techRequirements && (
@@ -478,6 +549,20 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
               <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono">
                 {streamingContent}
               </pre>
+            </div>
+          </div>
+        )}
+        {planUploading && (
+          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
+            <h4 className="text-sm font-medium text-blue-800 mb-2">正在解析方案文档...</h4>
+            <div className="flex items-center text-xs text-blue-600">
+              <div className="animate-spin -ml-1 mr-3 h-4 w-4 text-blue-600">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </div>
+              正在上传并读取文件内容...
             </div>
           </div>
         )}
@@ -502,6 +587,48 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
         </div>
       )}
 
+      {/* 方案扩写弹窗 */}
+      <PlanExpandModal
+        open={planModalOpen}
+        onClose={() => setPlanModalOpen(false)}
+        outlineData={outlineData}
+        onUploaded={(data) => {
+          setAlignedOutline(data.aligned_outline || null);
+          setRawDocxStructure(data.docx_structure || null);
+          if (data.message) {
+            setMessage({ type: 'success', text: data.message });
+          }
+        }}
+      />
+
+      {/* 对齐结果调试面板 */}
+      {alignedOutline && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-medium text-gray-900">对齐结果（aligned_outline）</h3>
+          </div>
+          <div className="border rounded p-3 max-h-80 overflow-auto bg-gray-50">
+            <pre className="text-xs text-gray-700 whitespace-pre-wrap">
+{JSON.stringify(alignedOutline, null, 2)}
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {/* DOCX 解析结构调试面板 */}
+      {rawDocxStructure && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-medium text-gray-900">DOCX 结构（docx_structure）</h3>
+          </div>
+          <div className="border rounded p-3 max-h-80 overflow-auto bg-gray-50">
+            <pre className="text-xs text-gray-700 whitespace-pre-wrap">
+{JSON.stringify(rawDocxStructure, null, 2)}
+            </pre>
+          </div>
+        </div>
+      )}
+
       {/* 消息提示 */}
       {message && (
         <div className={`p-4 rounded-md ${
@@ -514,6 +641,6 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
       )}
     </div>
   );
-};
+});
 
 export default OutlineEdit;
