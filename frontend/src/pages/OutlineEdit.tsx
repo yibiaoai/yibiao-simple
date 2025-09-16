@@ -167,10 +167,22 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
     setMessage({ type: 'success', text: '目录项更新成功' });
   };
 
+  // 重新分配序号的函数
+  const reorderItems = (items: OutlineItem[], parentPrefix: string = ''): OutlineItem[] => {
+    return items.map((item, index) => {
+      const newId = parentPrefix ? `${parentPrefix}.${index + 1}` : `${index + 1}`;
+      return {
+        ...item,
+        id: newId,
+        children: item.children ? reorderItems(item.children, newId) : undefined
+      };
+    });
+  };
+
   // 删除目录项
   const deleteItem = (itemId: string) => {
     if (!outlineData) return;
-    
+
     if (window.confirm('确定要删除这个目录项吗？')) {
       const deleteFromItems = (items: OutlineItem[]): OutlineItem[] => {
         return items.filter(item => {
@@ -184,9 +196,13 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
         });
       };
 
+      // 删除项目后重新排序
+      const filteredItems = deleteFromItems(outlineData.outline);
+      const reorderedItems = reorderItems(filteredItems);
+
       const updatedData = {
         ...outlineData,
-        outline: deleteFromItems(outlineData.outline)
+        outline: reorderedItems
       };
 
       onOutlineGenerated(updatedData);
