@@ -3,7 +3,7 @@
  */
 import React, { useState } from 'react';
 import { OutlineData, OutlineItem } from '../types';
-import { outlineApi } from '../services/api';
+import { outlineApi, expandApi } from '../services/api';
 import { ChevronRightIcon, ChevronDownIcon, DocumentTextIcon, PencilIcon, TrashIcon, PlusIcon } from '@heroicons/react/24/outline';
 
 interface OutlineEditProps {
@@ -26,6 +26,32 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
   const [editingItem, setEditingItem] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [expandFile, setExpandFile] = useState<File | null>(null);
+  const [uploadedExpand, setuploadedExpand] = useState(false);
+
+  // 处理方案扩写文件上传
+  const handleExpandUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setuploadedExpand(true);
+      setMessage(null);
+
+      const response = await expandApi.uploadExpandFile(file);
+
+      if (response.data.success) {
+        setExpandFile(file);
+        setMessage({ type: 'success', text: `方案扩写文件上传成功：${file.name}` });
+      } else {
+        throw new Error(response.data.message || '文件上传失败');
+      }
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.response?.data?.message || error.message || '文件上传失败' });
+    } finally {
+      setuploadedExpand(false);
+    }
+  };
 
   const handleGenerateOutline = async () => {
     if (!projectOverview || !techRequirements) {
@@ -41,6 +67,7 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
       const response = await outlineApi.generateOutlineStream({
         overview: projectOverview,
         requirements: techRequirements,
+        uploadedExpand,
       });
 
       const reader = response.body?.getReader();
@@ -456,6 +483,40 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
         <h2 className="text-xl font-semibold text-gray-900 mb-4">📋 目录管理</h2>
         
         <div className="flex space-x-4">
+          {/* 方案扩写按钮 */}
+          <div className="relative">
+            <input
+              type="file"
+              id="expand-file-upload"
+              accept=".pdf,.doc,.docx"
+              onChange={handleExpandUpload}
+              className="hidden"
+              disabled={uploadedExpand}
+            />
+            <label
+              htmlFor="expand-file-upload"
+              className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white cursor-pointer ${
+                uploadedExpand
+                  ? 'bg-gray-400 cursor-not-allowed'
+                  : 'bg-green-600 hover:bg-green-700'
+              } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500`}
+            >
+              {uploadedExpand ? (
+                <>
+                  <div className="animate-spin -ml-1 mr-3 h-4 w-4 text-white">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  </div>
+                  正在上传...
+                </>
+              ) : (
+                '方案扩写'
+              )}
+            </label>
+          </div>
+
           <button
             onClick={handleGenerateOutline}
             disabled={generating || !projectOverview || !techRequirements}
@@ -477,6 +538,18 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
           </button>
 
         </div>
+
+        {/* 显示已上传的方案扩写文件 */}
+        {expandFile && (
+          <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+            <div className="flex items-center">
+              <DocumentTextIcon className="h-5 w-5 text-green-600 mr-2" />
+              <span className="text-sm text-green-800">
+                已上传方案扩写文件：<span className="font-medium">{expandFile.name}</span>
+              </span>
+            </div>
+          </div>
+        )}
 
         {!projectOverview && !techRequirements && (
           <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">

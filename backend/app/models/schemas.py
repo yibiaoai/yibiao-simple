@@ -31,6 +31,7 @@ class FileUploadResponse(BaseModel):
     success: bool
     message: str
     file_content: Optional[str] = None
+    old_outline: Optional[str] = None
 
 
 class AnalysisType(str, Enum):
@@ -67,6 +68,7 @@ class OutlineRequest(BaseModel):
     """目录生成请求"""
     overview: str = Field(..., description="项目概述")
     requirements: str = Field(..., description="技术评分要求")
+    uploadedExpand: Optional[bool] = Field(False, description="是否已上传方案扩写文件")
 
 
 class ContentGenerationRequest(BaseModel):

@@ -3,6 +3,7 @@ import aiofiles
 import os
 import time
 import gc
+from datetime import datetime
 from typing import Optional, List
 import PyPDF2
 import docx
@@ -46,15 +47,23 @@ class FileService:
         """保存上传的文件并返回文件路径"""
         # 创建上传目录
         os.makedirs(settings.upload_dir, exist_ok=True)
-        
-        # 生成文件路径
-        file_path = os.path.join(settings.upload_dir, file.filename)
-        
+
+        # 生成带时间戳的文件名，防止重复
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # 精确到毫秒
+        filename = file.filename or "unknown_file"
+
+        # 分离文件名和扩展名
+        name, ext = os.path.splitext(filename)
+
+        # 生成新的文件名：原文件名_时间戳.扩展名
+        new_filename = f"{name}_{timestamp}{ext}"
+        file_path = os.path.join(settings.upload_dir, new_filename)
+
         # 异步保存文件
         async with aiofiles.open(file_path, 'wb') as f:
             content = await file.read()
             await f.write(content)
-        
+
         return file_path
     
     @staticmethod

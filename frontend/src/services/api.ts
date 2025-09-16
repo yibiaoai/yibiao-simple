@@ -7,7 +7,7 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 120000, // 调整为60秒
 });
 
 // 响应拦截器
@@ -39,6 +39,7 @@ export interface AnalysisRequest {
 export interface OutlineRequest {
   overview: string;
   requirements: string;
+  uploadedExpand?: boolean;
 }
 
 export interface ContentGenerationRequest {
@@ -101,7 +102,7 @@ export const outlineApi = {
 
   // 流式生成目录
   generateOutlineStream: (data: OutlineRequest) =>
-    fetch(`${API_BASE_URL}/api/outline/generate`, {
+    fetch(`${API_BASE_URL}/api/outline/generate-generate-stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -138,6 +139,7 @@ export const expandApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: 300000, // 文件上传专用超时设置：5分钟
     });
   },
 };
