@@ -16,16 +16,12 @@ async def generate_outline(request: OutlineRequest):
     try:
         # 加载配置
         config = config_manager.load_config()
-        
+
         if not config.get('api_key'):
             raise HTTPException(status_code=400, detail="请先配置OpenAI API密钥")
-        
+
         # 创建OpenAI服务实例
-        openai_service = OpenAIService(
-            api_key=config['api_key'],
-            base_url=config.get('base_url', ''),
-            model_name=config.get('model_name', 'gpt-3.5-turbo')
-        )
+        openai_service = OpenAIService()
         
         async def generate():
             # 后台计算主任务
@@ -77,16 +73,12 @@ async def generate_outline_stream(request: OutlineRequest):
     try:
         # 加载配置
         config = config_manager.load_config()
-        
+
         if not config.get('api_key'):
             raise HTTPException(status_code=400, detail="请先配置OpenAI API密钥")
-        
+
         # 创建OpenAI服务实例
-        openai_service = OpenAIService(
-            api_key=config['api_key'],
-            base_url=config.get('base_url', ''),
-            model_name=config.get('model_name', 'gpt-3.5-turbo')
-        )
+        openai_service = OpenAIService()
         
         async def generate():
             system_prompt = """你是一个专业的标书编写专家。根据提供的项目概述和技术评分要求，生成投标文件中技术标部分的目录结构。

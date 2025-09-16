@@ -7,20 +7,23 @@ from concurrent.futures import ThreadPoolExecutor
 
 from ..utils.outline_util import get_random_indexes, calculate_nodes_distribution,generate_one_outline_json_by_level1
 from ..utils.json_util import check_json
+from ..utils.config_manager import config_manager
 
 class OpenAIService:
     """OpenAI服务类"""
     
-    def __init__(self, api_key: str, base_url: str = None, model_name: str = "gpt-3.5-turbo"):
-        """初始化OpenAI服务"""
-        self.api_key = api_key
-        self.base_url = base_url
-        self.model_name = model_name
-        
+    def __init__(self):
+        """初始化OpenAI服务，从config_manager读取配置"""
+        # 从配置管理器加载配置
+        config = config_manager.load_config()
+        self.api_key = config.get('api_key', '')
+        self.base_url = config.get('base_url', '')
+        self.model_name = config.get('model_name', 'gpt-3.5-turbo')
+
         # 初始化OpenAI客户端 - 使用异步客户端
         self.client = openai.AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url if base_url else None
+            api_key=self.api_key,
+            base_url=self.base_url if self.base_url else None
         )
     
     async def get_available_models(self) -> List[str]:

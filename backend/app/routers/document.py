@@ -50,13 +50,9 @@ async def analyze_document_stream(request: AnalysisRequest):
         
         if not config.get('api_key'):
             raise HTTPException(status_code=400, detail="请先配置OpenAI API密钥")
-        
+
         # 创建OpenAI服务实例
-        openai_service = OpenAIService(
-            api_key=config['api_key'],
-            base_url=config.get('base_url', ''),
-            model_name=config.get('model_name', 'gpt-3.5-turbo')
-        )
+        openai_service = OpenAIService()
         
         async def generate():
             # 构建分析提示词

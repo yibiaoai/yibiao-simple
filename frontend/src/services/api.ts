@@ -128,4 +128,18 @@ export const contentApi = {
     }),
 };
 
+// 方案扩写相关API
+export const expandApi = {
+  // 上传方案扩写文件
+  uploadExpandFile: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<FileUploadResponse>('/api/expand/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+};
+
 export default api;

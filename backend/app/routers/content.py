@@ -18,13 +18,9 @@ async def generate_chapter_content(request: ChapterContentRequest):
         
         if not config.get('api_key'):
             raise HTTPException(status_code=400, detail="请先配置OpenAI API密钥")
-        
+
         # 创建OpenAI服务实例
-        openai_service = OpenAIService(
-            api_key=config['api_key'],
-            base_url=config.get('base_url', ''),
-            model_name=config.get('model_name', 'gpt-3.5-turbo')
-        )
+        openai_service = OpenAIService()
         
         # 生成单章节内容
         content = ""
@@ -51,13 +47,9 @@ async def generate_chapter_content_stream(request: ChapterContentRequest):
         
         if not config.get('api_key'):
             raise HTTPException(status_code=400, detail="请先配置OpenAI API密钥")
-        
+
         # 创建OpenAI服务实例
-        openai_service = OpenAIService(
-            api_key=config['api_key'],
-            base_url=config.get('base_url', ''),
-            model_name=config.get('model_name', 'gpt-3.5-turbo')
-        )
+        openai_service = OpenAIService()
         
         async def generate():
             try:

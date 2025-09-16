@@ -46,13 +46,23 @@ async def get_available_models(config: ConfigRequest):
                 success=False,
                 message="请先输入API Key"
             )
-        
-        # 创建OpenAI服务实例
-        openai_service = OpenAIService(
+
+        # 临时保存配置以供OpenAI服务使用
+        temp_saved = config_manager.save_config(
             api_key=config.api_key,
             base_url=config.base_url,
             model_name=config.model_name
         )
+
+        if not temp_saved:
+            return ModelListResponse(
+                models=[],
+                success=False,
+                message="保存临时配置失败"
+            )
+
+        # 创建OpenAI服务实例
+        openai_service = OpenAIService()
         
         # 获取模型列表
         models = await openai_service.get_available_models()
