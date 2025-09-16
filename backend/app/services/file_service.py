@@ -77,46 +77,37 @@ class FileService:
     
     @staticmethod
     def _extract_pdf_with_pdfplumber(file_path: str) -> str:
-        """使用pdfplumber提取PDF文本，包含表格"""
-        pdf = None
+        """使用pdfplumber提取PDF文本，包含表格（确保及时释放文件句柄）"""
         try:
             extracted_text = []
             
-            pdf = pdfplumber.open(file_path)
-            for page_num, page in enumerate(pdf.pages, 1):
-                # 添加页码标识
-                extracted_text.append(f"\n--- 第 {page_num} 页 ---\n")
-                
-                # 提取普通文本
-                text = page.extract_text()
-                if text:
-                    extracted_text.append(text)
-                
-                # 提取表格
-                tables = page.extract_tables()
-                for table_num, table in enumerate(tables, 1):
-                    extracted_text.append(f"\n[表格 {table_num}]")
-                    for row in table:
-                        if row:  # 跳过空行
-                            # 过滤空值并连接单元格
-                            row_text = " | ".join([str(cell) if cell else "" for cell in row])
-                            extracted_text.append(row_text)
-                    extracted_text.append("[表格结束]\n")
+            # 使用上下文管理器，避免在Windows上产生文件锁
+            with pdfplumber.open(file_path) as pdf:
+                for page_num, page in enumerate(pdf.pages, 1):
+                    # 添加页码标识
+                    extracted_text.append(f"\n--- 第 {page_num} 页 ---\n")
+                    
+                    # 提取普通文本
+                    text = page.extract_text()
+                    if text:
+                        extracted_text.append(text)
+                    
+                    # 提取表格
+                    tables = page.extract_tables()
+                    for table_num, table in enumerate(tables, 1):
+                        extracted_text.append(f"\n[表格 {table_num}]")
+                        for row in table:
+                            if row:  # 跳过空行
+                                # 过滤空值并连接单元格
+                                row_text = " | ".join([str(cell) if cell else "" for cell in row])
+                                extracted_text.append(row_text)
+                        extracted_text.append("[表格结束]\n")
             
             result = "\n".join(extracted_text).strip()
-            
-            # 确保关闭PDF文件
-            if pdf:
-                pdf.close()
             gc.collect()
-            
             return result
         except Exception as e:
-            # 确保关闭PDF文件
-            if pdf:
-                pdf.close()
             gc.collect()
-            
             # 如果pdfplumber失败，尝试PyMuPDF
             try:
                 return FileService._extract_pdf_with_pymupdf(file_path)
@@ -183,49 +174,38 @@ class FileService:
     
     @staticmethod
     def _extract_docx_with_docx2python(file_path: str) -> str:
-        """使用docx2python提取Word文档内容"""
-        content = None
+        """使用docx2python提取Word文档内容（确保及时释放文件句柄）"""
         try:
-            # 使用docx2python提取，它能更好地处理表格和结构
-            content = docx2python(file_path)
-            
             extracted_text = []
             
-            # 处理文档内容
-            if hasattr(content, 'document'):
-                for section in content.document:
-                    for element in section:
-                        if isinstance(element, list):
-                            # 这可能是表格
-                            extracted_text.append("\n[表格内容]")
-                            for row in element:
-                                if isinstance(row, list):
-                                    row_text = " | ".join([str(cell).strip() for cell in row if cell])
-                                    if row_text:
-                                        extracted_text.append(row_text)
-                                else:
-                                    extracted_text.append(str(row))
-                            extracted_text.append("[表格结束]\n")
-                        else:
-                            # 普通文本
-                            text = str(element).strip()
-                            if text:
-                                extracted_text.append(text)
+            # 使用上下文管理器确保文件及时关闭，避免Windows上的锁定
+            with docx2python(file_path) as content:
+                # 处理文档内容
+                if hasattr(content, 'document'):
+                    for section in content.document:
+                        for element in section:
+                            if isinstance(element, list):
+                                # 这可能是表格
+                                extracted_text.append("\n[表格内容]")
+                                for row in element:
+                                    if isinstance(row, list):
+                                        row_text = " | ".join([str(cell).strip() for cell in row if cell])
+                                        if row_text:
+                                            extracted_text.append(row_text)
+                                    else:
+                                        extracted_text.append(str(row))
+                                extracted_text.append("[表格结束]\n")
+                            else:
+                                # 普通文本
+                                text = str(element).strip()
+                                if text:
+                                    extracted_text.append(text)
             
             result = "\n".join(extracted_text).strip()
-            
-            # 确保释放资源
-            if content:
-                del content
             gc.collect()
-            
             return result
         except Exception as e:
-            # 确保释放资源
-            if content:
-                del content
             gc.collect()
-            
             # 如果docx2python失败，回退到增强的python-docx
             try:
                 return FileService._extract_docx_with_python_docx(file_path)

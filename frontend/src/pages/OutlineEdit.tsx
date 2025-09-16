@@ -28,6 +28,8 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
   const [editDescription, setEditDescription] = useState('');
   const [expandFile, setExpandFile] = useState<File | null>(null);
   const [uploadedExpand, setuploadedExpand] = useState(false);
+  const [oldOutline, setOldOutline] = useState<string | null>(null);
+  const [oldDocument, setOldDocument] = useState<string | null>(null);
 
   // 处理方案扩写文件上传
   const handleExpandUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -42,6 +44,8 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
 
       if (response.data.success) {
         setExpandFile(file);
+        setOldOutline(response.data.old_outline || null);
+        setOldDocument(response.data.file_content || null);
         setMessage({ type: 'success', text: `方案扩写文件上传成功：${file.name}` });
       } else {
         throw new Error(response.data.message || '文件上传失败');
@@ -49,7 +53,7 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
     } catch (error: any) {
       setMessage({ type: 'error', text: error.response?.data?.message || error.message || '文件上传失败' });
     } finally {
-      setuploadedExpand(false);
+
     }
   };
 
@@ -67,7 +71,9 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
       const response = await outlineApi.generateOutlineStream({
         overview: projectOverview,
         requirements: techRequirements,
-        uploadedExpand,
+        uploaded_expand: uploadedExpand,
+        old_outline: oldOutline || undefined,
+        old_document: oldDocument || undefined,
       });
 
       const reader = response.body?.getReader();
@@ -509,7 +515,7 @@ const OutlineEdit: React.FC<OutlineEditProps> = ({
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
                   </div>
-                  正在上传...
+                  正在分析...
                 </>
               ) : (
                 '方案扩写'

@@ -29,6 +29,7 @@ export interface FileUploadResponse {
   success: boolean;
   message: string;
   file_content?: string;
+  old_outline?: string;
 }
 
 export interface AnalysisRequest {
@@ -39,7 +40,9 @@ export interface AnalysisRequest {
 export interface OutlineRequest {
   overview: string;
   requirements: string;
-  uploadedExpand?: boolean;
+  uploaded_expand?: boolean;
+  old_outline?: string;
+  old_document?: string;
 }
 
 export interface ContentGenerationRequest {
@@ -102,7 +105,7 @@ export const outlineApi = {
 
   // 流式生成目录
   generateOutlineStream: (data: OutlineRequest) =>
-    fetch(`${API_BASE_URL}/api/outline/generate-generate-stream`, {
+    fetch(`${API_BASE_URL}/api/outline/generate-stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

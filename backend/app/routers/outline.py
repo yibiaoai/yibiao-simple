@@ -4,6 +4,7 @@ from fastapi.responses import StreamingResponse
 from ..models.schemas import OutlineRequest, OutlineResponse
 from ..services.openai_service import OpenAIService
 from ..utils.config_manager import config_manager
+from ..utils import prompt_manager
 import json
 import asyncio
 
@@ -79,65 +80,40 @@ async def generate_outline_stream(request: OutlineRequest):
 
         # 创建OpenAI服务实例
         openai_service = OpenAIService()
-        
+        # request.uploadedExpand
         async def generate():
-            system_prompt = """你是一个专业的标书编写专家。根据提供的项目概述和技术评分要求，生成投标文件中技术标部分的目录结构。
-
-要求：
-1. 目录结构要全面覆盖技术标的所有必要章节
-2. 章节名称要专业、准确，符合投标文件规范
-3. 一级目录名称要与技术评分要求中的章节名称一致，如果技术评分要求中没有章节名称，则结合技术评分要求中的内容，生成一级目录名称
-4. 一共包括三级目录
-5. 返回标准JSON格式，包含章节编号、标题、描述和子章节
-6. 除了JSON结果外，不要输出任何其他内容
-
-JSON格式要求：
-{
-  "outline": [
-    {
-      "id": "1",
-      "title": "",
-      "description": "",
-      "children": [
-        {
-          "id": "1.1",
-          "title": "",
-          "description": "",
-          "children":[
-              {
-                "id": "1.1.1",
-                "title": "",
-                "description": ""
-              }
-          ]
-        }
-      ]
-    }
-  ]
-}
-"""
+            if request.uploaded_expand:
+                system_prompt, user_prompt = prompt_manager.generate_outline_with_old_prompt(request.overview, request.requirements, request.old_outline)
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ]
+                
+                full_content = ""
+                async for chunk in openai_service.stream_chat_completion(messages, temperature=0.7, response_format={"type": "json_object"}):
+                    full_content += chunk
+                print(full_content)
+                # 流式返回目录生成结果
+                # async for chunk in openai_service.stream_chat_completion(messages, temperature=0.7, response_format={"type": "json_object"}):
+                #     yield f"data: {json.dumps({'chunk': chunk}, ensure_ascii=False)}\n\n"
+                
+                # 发送结束信号
+                # yield "data: [DONE]\n\n"
             
-            user_prompt = f"""请基于以下项目信息生成标书目录结构：
-
-项目概述：
-{request.overview}
-
-技术评分要求：
-{request.requirements}
-
-请生成完整的技术标目录结构，确保覆盖所有技术评分要点。"""
+            else:
+                system_prompt, user_prompt = prompt_manager.generate_outline_prompt(request.overview, request.requirements)
             
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
-            
-            # 流式返回目录生成结果
-            async for chunk in openai_service.stream_chat_completion(messages, temperature=0.7, response_format={"type": "json_object"}):
-                yield f"data: {json.dumps({'chunk': chunk}, ensure_ascii=False)}\n\n"
-            
-            # 发送结束信号
-            yield "data: [DONE]\n\n"
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ]
+                
+                # 流式返回目录生成结果
+                async for chunk in openai_service.stream_chat_completion(messages, temperature=0.7, response_format={"type": "json_object"}):
+                    yield f"data: {json.dumps({'chunk': chunk}, ensure_ascii=False)}\n\n"
+                
+                # 发送结束信号
+                yield "data: [DONE]\n\n"
         
         return StreamingResponse(
             generate(),

@@ -68,8 +68,9 @@ class OutlineRequest(BaseModel):
     """目录生成请求"""
     overview: str = Field(..., description="项目概述")
     requirements: str = Field(..., description="技术评分要求")
-    uploadedExpand: Optional[bool] = Field(False, description="是否已上传方案扩写文件")
-
+    uploaded_expand: Optional[bool] = Field(False, description="是否已上传方案扩写文件")
+    old_outline: Optional[str] = Field(None, description="上传的方案扩写文件解析出的旧目录JSON")
+    old_document: Optional[str] = Field(None, description="上传的方案扩写文件解析出的旧文档")
 
 class ContentGenerationRequest(BaseModel):
     """内容生成请求"""
