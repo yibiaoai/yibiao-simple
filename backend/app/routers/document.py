@@ -1,11 +1,18 @@
 """文档处理相关API路由"""
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
-from ..models.schemas import FileUploadResponse, AnalysisRequest, AnalysisType
+from ..models.schemas import FileUploadResponse, AnalysisRequest, AnalysisType, WordExportRequest
 from ..services.file_service import FileService
 from ..services.openai_service import OpenAIService
 from ..utils.config_manager import config_manager
 import json
+import io
+import re
+import docx
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
+from urllib.parse import quote
 
 router = APIRouter(prefix="/api/document", tags=["文档处理"])
 
@@ -40,6 +47,7 @@ async def upload_file(file: UploadFile = File(...)):
             success=False,
             message=f"文件处理失败: {str(e)}"
         )
+
 
 @router.post("/analyze-stream")
 async def analyze_document_stream(request: AnalysisRequest):
@@ -138,3 +146,272 @@ async def analyze_document_stream(request: AnalysisRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"文档分析失败: {str(e)}")
+
+
+@router.post("/export-word")
+async def export_word(request: WordExportRequest):
+    """根据目录数据导出Word文档"""
+    try:
+        doc = docx.Document()
+
+        # 统一设置文档的基础字体为宋体，取消普通段落默认加粗
+        try:
+            styles = doc.styles
+            base_styles = ["Normal", "Heading 1", "Heading 2", "Heading 3", "Title"]
+            for style_name in base_styles:
+                if style_name in styles:
+                    style = styles[style_name]
+                    font = style.font
+                    font.name = "宋体"
+                    # 设置中文字体
+                    if style._element.rPr is None:
+                        style._element._add_rPr()
+                    rpr = style._element.rPr
+                    rpr.rFonts.set(qn("w:eastAsia"), "宋体")
+                    if style_name == "Normal":
+                        font.bold = False
+        except Exception:
+            # 字体设置失败不影响文档生成，忽略
+            pass
+
+        # AI 生成声明
+        p = doc.add_paragraph()
+        run = p.add_run("内容由AI生成")
+        run.italic = True
+        run.font.size = Pt(9)
+        run.font.name = "宋体"
+        r = run._element.rPr
+        if r is not None and r.rFonts is not None:
+            r.rFonts.set(qn("w:eastAsia"), "宋体")
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        # 文档标题
+        title = request.project_name or "投标技术文件"
+        title_p = doc.add_paragraph()
+        title_run = title_p.add_run(title)
+        title_run.bold = True
+        title_run.font.size = Pt(16)
+        title_run.font.name = "宋体"
+        tr = title_run._element.rPr
+        if tr is not None and tr.rFonts is not None:
+            tr.rFonts.set(qn("w:eastAsia"), "宋体")
+        title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        # 项目概述
+        if request.project_overview:
+            heading = doc.add_heading("项目概述", level=1)
+            heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            for hr in heading.runs:
+                hr.font.name = "宋体"
+                rr = hr._element.rPr
+                if rr is not None and rr.rFonts is not None:
+                    rr.rFonts.set(qn("w:eastAsia"), "宋体")
+            overview_p = doc.add_paragraph(request.project_overview)
+            for orun in overview_p.runs:
+                orun.font.name = "宋体"
+                rr = orun._element.rPr
+                if rr is not None and rr.rFonts is not None:
+                    rr.rFonts.set(qn("w:eastAsia"), "宋体")
+            overview_p_format = overview_p.paragraph_format
+            overview_p_format.space_after = Pt(12)
+
+        # 简单的 Markdown 段落解析：支持标题、列表、表格和基础加粗/斜体
+        def add_markdown_runs(para: docx.text.paragraph.Paragraph, text: str):
+            """在指定段落中追加 markdown 文本的 runs"""
+            pattern = r"(\*\*.*?\*\*|\*.*?\*|`.*?`)"
+            parts = re.split(pattern, text)
+            for part in parts:
+                if not part:
+                    continue
+                run = para.add_run()
+                # 加粗
+                if part.startswith("**") and part.endswith("**") and len(part) > 4:
+                    run.text = part[2:-2]
+                    run.bold = True
+                # 斜体
+                elif part.startswith("*") and part.endswith("*") and len(part) > 2:
+                    run.text = part[1:-1]
+                    run.italic = True
+                # 行内代码：这里只去掉反引号
+                elif part.startswith("`") and part.endswith("`") and len(part) > 2:
+                    run.text = part[1:-1]
+                else:
+                    run.text = part
+                # 确保字体为宋体
+                run.font.name = "宋体"
+                r = run._element.rPr
+                if r is not None and r.rFonts is not None:
+                    r.rFonts.set(qn("w:eastAsia"), "宋体")
+
+        def add_markdown_paragraph(text: str):
+            """将一段 Markdown 文本解析为一个普通段落，保留加粗/斜体效果"""
+            para = doc.add_paragraph()
+            add_markdown_runs(para, text)
+            para.paragraph_format.space_after = Pt(6)
+
+        def add_markdown_content(content: str):
+            """按行解析 Markdown 文本并添加到文档"""
+            lines = content.split("\n")
+            i = 0
+            while i < len(lines):
+                line = lines[i].rstrip("\r").strip()
+                if not line:
+                    i += 1
+                    continue
+
+                # 列表项（有序/无序）
+                if line.startswith("- ") or line.startswith("* ") or re.match(r"^\d+\.\s", line):
+                    # items: (kind, number, text)
+                    items = []
+                    while i < len(lines):
+                        raw = lines[i].rstrip("\r")
+                        stripped = raw.strip()
+                        # 无序列表
+                        if stripped.startswith("- ") or stripped.startswith("* "):
+                            text = re.sub(r"^[-*]\s+", "", stripped).strip()
+                            if text:
+                                items.append(("unordered", None, text))
+                            i += 1
+                            continue
+                        # 有序列表（1. xxx）
+                        m_num = re.match(r"^(\d+)\.\s+(.*)$", stripped)
+                        if m_num:
+                            num_str, text = m_num.groups()
+                            text = text.strip()
+                            if text:
+                                items.append(("ordered", num_str, text))
+                            i += 1
+                            continue
+                        break
+
+                    for kind, num_str, text in items:
+                        p = doc.add_paragraph()
+                        if kind == "unordered":
+                            # 使用“• ”模拟项目符号
+                            run = p.add_run("• ")
+                            run.font.name = "宋体"
+                            r = run._element.rPr
+                            if r is not None and r.rFonts is not None:
+                                r.rFonts.set(qn("w:eastAsia"), "宋体")
+                        else:
+                            # 有序列表：输出 "1. " 这样的前缀
+                            prefix = f"{num_str}."
+                            run = p.add_run(prefix + " ")
+                            run.font.name = "宋体"
+                            r = run._element.rPr
+                            if r is not None and r.rFonts is not None:
+                                r.rFonts.set(qn("w:eastAsia"), "宋体")
+                        # 紧跟在同一段落中追加列表文本
+                        add_markdown_runs(p, text)
+                    continue
+
+                # 表格（简化为每行一个段落，单元格用 | 分隔）
+                if "|" in line:
+                    rows = []
+                    while i < len(lines):
+                        raw = lines[i].rstrip("\r")
+                        stripped = raw.strip()
+                        if "|" in stripped:
+                            # 跳过仅由 - 和 | 组成的分隔行
+                            if not re.match(r"^\|?[-\s\|]+\|?$", stripped):
+                                cells = [c.strip() for c in stripped.split("|")]
+                                row_text = " | ".join([c for c in cells if c])
+                                if row_text:
+                                    rows.append(row_text)
+                            i += 1
+                        else:
+                            break
+                    for row in rows:
+                        add_markdown_paragraph(row)
+                    continue
+
+                # Markdown 标题（# / ## / ###）
+                if line.startswith("#"):
+                    m = re.match(r"^(#+)\s*(.*)$", line)
+                    if m:
+                        level_marks, title_text = m.groups()
+                        level = min(len(level_marks), 3)
+                        heading = doc.add_heading(title_text.strip(), level=level)
+                        heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    i += 1
+                    continue
+
+                # 普通段落：合并连续的普通行
+                para_lines = []
+                while i < len(lines):
+                    raw = lines[i].rstrip("\r")
+                    stripped = raw.strip()
+                    if (
+                        stripped
+                        and not stripped.startswith("-")
+                        and not stripped.startswith("*")
+                        and "|" not in stripped
+                        and not stripped.startswith("#")
+                    ):
+                        para_lines.append(stripped)
+                        i += 1
+                    else:
+                        break
+                if para_lines:
+                    text = " ".join(para_lines)
+                    add_markdown_paragraph(text)
+                else:
+                    i += 1
+
+        # 递归构建文档内容（章节和内容）
+        def add_outline_items(items, level: int = 1):
+            for item in items:
+                # 章节标题
+                if level <= 3:
+                    heading = doc.add_heading(f"{item.id} {item.title}", level=level)
+                    heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    for hr in heading.runs:
+                        hr.font.name = "宋体"
+                        rr = hr._element.rPr
+                        if rr is not None and rr.rFonts is not None:
+                            rr.rFonts.set(qn("w:eastAsia"), "宋体")
+                else:
+                    para = doc.add_paragraph()
+                    run = para.add_run(f"{item.id} {item.title}")
+                    run.bold = True
+                    run.font.name = "宋体"
+                    rr = run._element.rPr
+                    if rr is not None and rr.rFonts is not None:
+                        rr.rFonts.set(qn("w:eastAsia"), "宋体")
+                    para.paragraph_format.space_before = Pt(6)
+                    para.paragraph_format.space_after = Pt(3)
+
+                # 叶子节点内容
+                if not item.children:
+                    content = item.content or ""
+                    if content.strip():
+                        add_markdown_content(content)
+                else:
+                    add_outline_items(item.children, level + 1)
+
+        add_outline_items(request.outline)
+
+        # 输出到内存并返回
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+
+        filename = f"{request.project_name or '标书文档'}.docx"
+        # 使用 RFC 5987 格式对文件名进行 URL 编码，避免非 ASCII 字符导致的编码错误
+        encoded_filename = quote(filename)
+        content_disposition = f"attachment; filename*=UTF-8''{encoded_filename}"
+        headers = {
+            "Content-Disposition": content_disposition
+        }
+
+        return StreamingResponse(
+            buffer,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers=headers
+        )
+    except Exception as e:
+        # 打印详细错误信息到控制台，方便排查
+        import traceback
+        print("导出Word失败:", str(e))
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"导出Word失败: {str(e)}")

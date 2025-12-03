@@ -90,3 +90,10 @@ class ErrorResponse(BaseModel):
     """错误响应"""
     error: str
     detail: Optional[str] = None
+
+
+class WordExportRequest(BaseModel):
+    """Word导出请求"""
+    project_name: Optional[str] = Field(None, description="项目名称")
+    project_overview: Optional[str] = Field(None, description="项目概述")
+    outline: List[OutlineItem] = Field(..., description="目录结构，包含内容")

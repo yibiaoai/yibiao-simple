@@ -5,9 +5,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { OutlineData, OutlineItem } from '../types';
 import { DocumentTextIcon, PlayIcon, DocumentArrowDownIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUpIcon } from '@heroicons/react/24/outline';
-import { contentApi, ChapterContentRequest } from '../services/api';
+import { contentApi, ChapterContentRequest, documentApi } from '../services/api';
 import { saveAs } from 'file-saver';
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
+import { Paragraph, TextRun } from 'docx';
 
 interface ContentEditProps {
   outlineData: OutlineData | null;
@@ -465,116 +465,34 @@ const ContentEdit: React.FC<ContentEditProps> = ({
     if (!outlineData) return;
 
     try {
-      const children = [];
-      
-      // AI生成声明
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: '内容由AI生成',
-              italics: true,
-              size: 18,
-              color: '666666',
-            }),
-          ],
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 600 },
-        })
-      );
-      
-      // 文档标题
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: outlineData.project_name || '投标技术文件',
-              bold: true,
-              size: 32,
-            }),
-          ],
-          heading: HeadingLevel.TITLE,
-          spacing: { after: 400 },
-        })
-      );
-
-      // 项目概述
-      if (outlineData.project_overview) {
-        children.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: '项目概述',
-                bold: true,
-                size: 24,
-              }),
-            ],
-            heading: HeadingLevel.HEADING_1,
-            spacing: { before: 200, after: 200 },
-          }),
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: outlineData.project_overview,
-                size: 20,
-              }),
-            ],
-            spacing: { after: 400 },
-          })
-        );
-      }
-      
-      // 构建文档内容
-      const buildWordContent = (items: OutlineItem[], level: number = 1) => {
-        items.forEach(item => {
-          // 章节标题
-          const headingLevel = level === 1 ? HeadingLevel.HEADING_1 : 
-                              level === 2 ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_3;
-          
-          children.push(
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: `${item.id} ${item.title}`,
-                  bold: true,
-                  size: level === 1 ? 24 : level === 2 ? 22 : 20,
-                }),
-              ],
-              heading: headingLevel,
-              spacing: { before: 300, after: 100 },
-            })
-          );
-
-          // 移除章节描述（description是给AI的提示，不应出现在最终文档中）
-
-          // 叶子节点内容
-          if (!item.children || item.children.length === 0) {
-            const content = getLatestContent(item);
-            if (content) {
-              // 使用改进的Markdown解析器
-              const parsedParagraphs = parseMarkdownToWord(content);
-              children.push(...parsedParagraphs);
-            }
-          } else {
-            // 递归处理子章节
-            buildWordContent(item.children, level + 1);
+      // 构建带有最新内容的导出数据（leafItems 中存的是实时内容）
+      const buildExportOutline = (items: OutlineItem[]): OutlineItem[] => {
+        return items.map(item => {
+          const isLeaf = !item.children || item.children.length === 0;
+          const latestContent = getLatestContent(item);
+          const exportedItem: OutlineItem = {
+            ...item,
+            content: latestContent,
+          };
+          if (item.children && item.children.length > 0) {
+            exportedItem.children = buildExportOutline(item.children);
           }
+          return exportedItem;
         });
       };
 
-      buildWordContent(outlineData.outline);
+      const exportPayload = {
+        project_name: outlineData.project_name,
+        project_overview: outlineData.project_overview,
+        outline: buildExportOutline(outlineData.outline),
+      };
 
-      // 创建 Word 文档
-      const doc = new Document({
-        sections: [{
-          properties: {},
-          children: children,
-        }],
-      });
-
-      // 生成并下载文件
-      const buffer = await Packer.toBlob(doc);
-      saveAs(buffer, `${outlineData.project_name || '标书文档'}.docx`);
+      const response = await documentApi.exportWord(exportPayload);
+      if (!response.ok) {
+        throw new Error('导出失败');
+      }
+      const blob = await response.blob();
+      saveAs(blob, `${outlineData.project_name || '标书文档'}.docx`);
       
     } catch (error) {
       console.error('导出失败:', error);

@@ -95,6 +95,16 @@ export const documentApi = {
       },
       body: JSON.stringify(data),
     }),
+
+  // 导出Word文档
+  exportWord: (data: any) =>
+    fetch(`${API_BASE_URL}/api/document/export-word`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    }),
 };
 
 // 目录相关API
