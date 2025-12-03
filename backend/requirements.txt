@@ -15,6 +15,8 @@ pdfplumber==0.11.7
 pymupdf==1.26.4
 docx2python==3.5.0
 requests==2.32.3
+aiohttp==3.10.11
+Pillow==10.4.0
 asyncio-throttle==1.0.2
 duckduckgo-search==8.1.1
 # LangChain支持（已移除）

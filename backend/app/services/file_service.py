@@ -3,11 +3,14 @@ import aiofiles
 import os
 import time
 import gc
+import io
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Tuple
 import PyPDF2
 import docx
 from fastapi import UploadFile
+import aiohttp
+import asyncio
 from ..config import settings
 
 # 新增的第三方库
@@ -15,6 +18,7 @@ try:
     import pdfplumber
     import fitz  # PyMuPDF
     from docx2python import docx2python
+    from PIL import Image
     HAS_ADVANCED_LIBS = True
 except ImportError as e:
     HAS_ADVANCED_LIBS = False
@@ -23,7 +27,130 @@ except ImportError as e:
 
 class FileService:
     """文件处理服务"""
-    
+
+    # 图片上传配置
+    IMAGE_UPLOAD_URL = "https://mt.agnet.top/image/upload"
+    IMAGE_UPLOAD_TIMEOUT = 30  # 超时时间（秒）
+
+    @staticmethod
+    async def upload_image_to_server(image_data: bytes, filename: str) -> Optional[str]:
+        """上传图片到外部服务器"""
+        try:
+            # 准备multipart/form-data格式的数据
+            form_data = aiohttp.FormData()
+            form_data.add_field('file',
+                              io.BytesIO(image_data),
+                              filename=filename,
+                              content_type='image/jpeg')
+
+            timeout = aiohttp.ClientTimeout(total=FileService.IMAGE_UPLOAD_TIMEOUT)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(FileService.IMAGE_UPLOAD_URL, data=form_data) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        # 根据实际API返回格式获取图片URL
+                        return result.get('file_url')
+                    else:
+                        print(f"图片上传失败，状态码: {response.status}")
+                        return None
+        except Exception as e:
+            print(f"图片上传异常: {str(e)}")
+            return None
+
+    @staticmethod
+    def extract_images_from_pdf(file_path: str) -> List[Tuple[bytes, str, int, int]]:
+        """从PDF提取图片，返回 (图片数据, 扩展名, 页码, 图片索引) 列表"""
+        if not HAS_ADVANCED_LIBS:
+            return []
+
+        images = []
+        try:
+            doc = fitz.open(file_path)
+
+            for page_num in range(doc.page_count):
+                page = doc[page_num]
+                image_list = page.get_images(full=True)
+
+                for img_index, img in enumerate(image_list):
+                    try:
+                        # 获取图片数据
+                        xref = img[0]
+                        pix = fitz.Pixmap(doc, xref)
+
+                        # 转换为RGB格式（如果是CMYK）
+                        if pix.n - pix.alpha < 4:
+                            img_data = pix.tobytes("jpeg")
+                            ext = "jpg"
+                        else:
+                            pix1 = fitz.Pixmap(fitz.csRGB, pix)
+                            img_data = pix1.tobytes("jpeg")
+                            ext = "jpg"
+                            pix1 = None
+
+                        pix = None
+                        images.append((img_data, ext, page_num + 1, img_index + 1))
+
+                    except Exception as e:
+                        print(f"提取PDF第{page_num+1}页图片{img_index+1}失败: {str(e)}")
+                        continue
+
+            doc.close()
+            return images
+
+        except Exception as e:
+            print(f"PDF图片提取失败: {str(e)}")
+            return []
+
+    @staticmethod
+    def extract_images_from_docx(file_path: str) -> List[Tuple[bytes, str, int]]:
+        """从Word文档提取图片，返回 (图片数据, 扩展名, 图片索引) 列表"""
+        images = []
+        doc = None
+        try:
+            doc = docx.Document(file_path)
+
+            # 获取文档中的所有关系
+            rels = doc.part.rels
+            img_index = 0
+
+            for rel in rels.values():
+                if "image" in rel.target_ref:
+                    try:
+                        # 读取图片数据
+                        img_data = rel.target_part.blob
+
+                        # 根据content_type确定扩展名
+                        content_type = rel.target_part.content_type
+                        if 'jpeg' in content_type:
+                            ext = 'jpg'
+                        elif 'png' in content_type:
+                            ext = 'png'
+                        elif 'gif' in content_type:
+                            ext = 'gif'
+                        elif 'bmp' in content_type:
+                            ext = 'bmp'
+                        else:
+                            ext = 'jpg'  # 默认
+
+                        img_index += 1
+                        images.append((img_data, ext, img_index))
+
+                    except Exception as e:
+                        print(f"提取Word文档图片{img_index+1}失败: {str(e)}")
+                        continue
+
+            if doc:
+                del doc
+            gc.collect()
+            return images
+
+        except Exception as e:
+            if doc:
+                del doc
+            gc.collect()
+            print(f"Word文档图片提取失败: {str(e)}")
+            return []
+
     @staticmethod
     def _safe_file_cleanup(file_path: str, max_retries: int = 3) -> bool:
         """安全删除文件，带重试机制"""
@@ -67,31 +194,72 @@ class FileService:
         return file_path
     
     @staticmethod
-    def extract_text_from_pdf(file_path: str) -> str:
-        """从PDF文件提取文本，支持表格内容"""
+    async def extract_text_from_pdf(file_path: str) -> str:
+        """从PDF文件提取文本，支持表格内容和图片"""
         if HAS_ADVANCED_LIBS:
-            return FileService._extract_pdf_with_pdfplumber(file_path)
+            return await FileService._extract_pdf_with_pdfplumber(file_path)
         else:
             # 降级到原来的PyPDF2方法
             return FileService._extract_pdf_with_pypdf2(file_path)
     
     @staticmethod
-    def _extract_pdf_with_pdfplumber(file_path: str) -> str:
-        """使用pdfplumber提取PDF文本，包含表格（确保及时释放文件句柄）"""
+    async def _extract_pdf_with_pdfplumber(file_path: str) -> str:
+        """使用pdfplumber提取PDF文本，包含表格和图片（确保及时释放文件句柄）"""
         try:
             extracted_text = []
-            
+            image_references = []  # 存储图片引用映射
+            global_img_counter = 1
+
+            # 获取PDF文档的所有图片信息，用于后续匹配
+            all_images = FileService.extract_images_from_pdf(file_path)
+            page_images_map = {}
+            for img_data, ext, page_num, img_index in all_images:
+                if page_num not in page_images_map:
+                    page_images_map[page_num] = []
+                page_images_map[page_num].append((img_data, ext, img_index))
+
             # 使用上下文管理器，避免在Windows上产生文件锁
             with pdfplumber.open(file_path) as pdf:
                 for page_num, page in enumerate(pdf.pages, 1):
                     # 添加页码标识
                     extracted_text.append(f"\n--- 第 {page_num} 页 ---\n")
-                    
+
                     # 提取普通文本
                     text = page.extract_text()
                     if text:
-                        extracted_text.append(text)
-                    
+                        # 检查文本中是否有图片标记
+                        import re
+                        img_pattern = r'----.*?(?:image|img|media).*?----'
+                        img_matches = list(re.finditer(img_pattern, text, re.IGNORECASE))
+
+                        if img_matches and page_num in page_images_map:
+                            # 按顺序处理页面中的图片
+                            page_images = page_images_map[page_num]
+                            processed_text = text
+
+                            for i, match in enumerate(img_matches):
+                                if i < len(page_images):
+                                    # 获取对应的图片数据
+                                    img_data, ext, img_index = page_images[i]
+                                    filename = f"pdf_page{page_num}_img{img_index}.{ext}"
+
+                                    # 上传图片
+                                    image_url = await FileService.upload_image_to_server(img_data, filename)
+
+                                    if image_url:
+                                        # 替换图片标记
+                                        old_mark = match.group()
+                                        new_mark = f"[图片{global_img_counter}]"
+                                        processed_text = processed_text.replace(old_mark, new_mark, 1)
+
+                                        # 记录图片引用
+                                        image_references.append(f"[图片{global_img_counter}]: {image_url}")
+                                        global_img_counter += 1
+
+                            extracted_text.append(processed_text)
+                        else:
+                            extracted_text.append(text)
+
                     # 提取表格
                     tables = page.extract_tables()
                     for table_num, table in enumerate(tables, 1):
@@ -102,7 +270,12 @@ class FileService:
                                 row_text = " | ".join([str(cell) if cell else "" for cell in row])
                                 extracted_text.append(row_text)
                         extracted_text.append("[表格结束]\n")
-            
+
+            # 在文档末尾添加图片引用映射
+            if image_references:
+                extracted_text.append(f"\n\n--- 图片引用 ---")
+                extracted_text.extend(image_references)
+
             result = "\n".join(extracted_text).strip()
             gc.collect()
             return result
@@ -110,13 +283,13 @@ class FileService:
             gc.collect()
             # 如果pdfplumber失败，尝试PyMuPDF
             try:
-                return FileService._extract_pdf_with_pymupdf(file_path)
+                return await FileService._extract_pdf_with_pymupdf(file_path)
             except Exception:
                 raise Exception(f"PDF文件读取失败: {str(e)}")
     
     @staticmethod
-    def _extract_pdf_with_pymupdf(file_path: str) -> str:
-        """使用PyMuPDF提取PDF文本"""
+    async def _extract_pdf_with_pymupdf(file_path: str) -> str:
+        """使用PyMuPDF提取PDF文本和图片"""
         try:
             doc = fitz.open(file_path)
             extracted_text = []
@@ -164,20 +337,25 @@ class FileService:
             raise Exception(f"PDF文件读取失败: {str(e)}")
     
     @staticmethod
-    def extract_text_from_docx(file_path: str) -> str:
-        """从Word文档提取文本，支持表格内容"""
+    async def extract_text_from_docx(file_path: str) -> str:
+        """从Word文档提取文本，支持表格内容和图片"""
         if HAS_ADVANCED_LIBS:
-            return FileService._extract_docx_with_docx2python(file_path)
+            return await FileService._extract_docx_with_docx2python(file_path)
         else:
             # 降级到原来的python-docx方法，但增强表格处理
-            return FileService._extract_docx_with_python_docx(file_path)
+            return await FileService._extract_docx_with_python_docx(file_path)
     
     @staticmethod
-    def _extract_docx_with_docx2python(file_path: str) -> str:
-        """使用docx2python提取Word文档内容（确保及时释放文件句柄）"""
+    async def _extract_docx_with_docx2python(file_path: str) -> str:
+        """使用docx2python提取Word文档内容和图片（确保及时释放文件句柄）"""
         try:
             extracted_text = []
-            
+            image_references = []  # 存储图片引用映射
+            global_img_counter = 1
+
+            # 获取Word文档的所有图片信息
+            all_images = FileService.extract_images_from_docx(file_path)
+
             # 使用上下文管理器确保文件及时关闭，避免Windows上的锁定
             with docx2python(file_path) as content:
                 # 处理文档内容
@@ -196,11 +374,45 @@ class FileService:
                                         extracted_text.append(str(row))
                                 extracted_text.append("[表格结束]\n")
                             else:
-                                # 普通文本
+                                # 普通文本，检查是否包含图片标记
                                 text = str(element).strip()
                                 if text:
-                                    extracted_text.append(text)
-            
+                                    # 检查文本中是否有图片标记
+                                    import re
+                                    img_pattern = r'----.*?(?:image|img|media).*?----'
+                                    img_matches = list(re.finditer(img_pattern, text, re.IGNORECASE))
+
+                                    if img_matches and all_images:
+                                        processed_text = text
+
+                                        for match in img_matches:
+                                            if global_img_counter <= len(all_images):
+                                                # 获取对应的图片数据
+                                                img_data, ext, img_index = all_images[global_img_counter - 1]
+                                                filename = f"docx_img{global_img_counter}.{ext}"
+
+                                                # 上传图片
+                                                image_url = await FileService.upload_image_to_server(img_data, filename)
+
+                                                if image_url:
+                                                    # 替换图片标记
+                                                    old_mark = match.group()
+                                                    new_mark = f"[图片{global_img_counter}]"
+                                                    processed_text = processed_text.replace(old_mark, new_mark, 1)
+
+                                                    # 记录图片引用
+                                                    image_references.append(f"[图片{global_img_counter}]: {image_url}")
+                                                    global_img_counter += 1
+
+                                        extracted_text.append(processed_text)
+                                    else:
+                                        extracted_text.append(text)
+
+            # 在文档末尾添加图片引用映射
+            if image_references:
+                extracted_text.append(f"\n\n--- 图片引用 ---")
+                extracted_text.extend(image_references)
+
             result = "\n".join(extracted_text).strip()
             gc.collect()
             return result
@@ -208,24 +420,58 @@ class FileService:
             gc.collect()
             # 如果docx2python失败，回退到增强的python-docx
             try:
-                return FileService._extract_docx_with_python_docx(file_path)
+                return await FileService._extract_docx_with_python_docx(file_path)
             except Exception:
                 raise Exception(f"Word文档读取失败: {str(e)}")
     
     @staticmethod
-    def _extract_docx_with_python_docx(file_path: str) -> str:
-        """使用python-docx提取Word文档内容（增强版）"""
+    async def _extract_docx_with_python_docx(file_path: str) -> str:
+        """使用python-docx提取Word文档内容和图片（增强版）"""
         doc = None
         try:
             doc = docx.Document(file_path)
             extracted_text = []
-            
-            # 提取段落文本
+            image_references = []  # 存储图片引用映射
+            global_img_counter = 1
+
+            # 获取Word文档的所有图片信息
+            all_images = FileService.extract_images_from_docx(file_path)
+
+            # 提取段落文本，同时处理图片
             for paragraph in doc.paragraphs:
                 text = paragraph.text.strip()
                 if text:
-                    extracted_text.append(text)
-            
+                    # 检查文本中是否有图片标记
+                    import re
+                    img_pattern = r'----.*?(?:image|img|media).*?----'
+                    img_matches = list(re.finditer(img_pattern, text, re.IGNORECASE))
+
+                    if img_matches and all_images:
+                        processed_text = text
+
+                        for match in img_matches:
+                            if global_img_counter <= len(all_images):
+                                # 获取对应的图片数据
+                                img_data, ext, img_index = all_images[global_img_counter - 1]
+                                filename = f"docx_img{global_img_counter}.{ext}"
+
+                                # 上传图片
+                                image_url = await FileService.upload_image_to_server(img_data, filename)
+
+                                if image_url:
+                                    # 替换图片标记
+                                    old_mark = match.group()
+                                    new_mark = f"[图片{global_img_counter}]"
+                                    processed_text = processed_text.replace(old_mark, new_mark, 1)
+
+                                    # 记录图片引用
+                                    image_references.append(f"[图片{global_img_counter}]: {image_url}")
+                                    global_img_counter += 1
+
+                        extracted_text.append(processed_text)
+                    else:
+                        extracted_text.append(text)
+
             # 提取表格内容
             for table_num, table in enumerate(doc.tables, 1):
                 extracted_text.append(f"\n[表格 {table_num}]")
@@ -238,14 +484,19 @@ class FileService:
                     if row_text.strip():
                         extracted_text.append(row_text)
                 extracted_text.append("[表格结束]\n")
-            
+
+            # 在文档末尾添加图片引用映射
+            if image_references:
+                extracted_text.append(f"\n\n--- 图片引用 ---")
+                extracted_text.extend(image_references)
+
             result = "\n".join(extracted_text).strip()
-            
+
             # 确保释放资源
             if doc:
                 del doc
             gc.collect()
-            
+
             return result
         except Exception as e:
             # 确保释放资源
@@ -269,19 +520,19 @@ class FileService:
         file_path = await FileService.save_uploaded_file(file)
         
         try:
-            # 根据文件类型提取文本
+            # 根据文件类型提取文本和图片
             if file.content_type == "application/pdf":
-                text = FileService.extract_text_from_pdf(file_path)
+                text = await FileService.extract_text_from_pdf(file_path)
             elif file.content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-                text = FileService.extract_text_from_docx(file_path)
+                text = await FileService.extract_text_from_docx(file_path)
             else:
                 raise Exception("不支持的文件类型，请上传PDF或Word文档")
-            
+
             # 成功提取后，使用安全的文件清理方法
             FileService._safe_file_cleanup(file_path)
-            
+
             return text
-            
+
         except Exception as e:
             # 异常情况下也使用安全的文件清理方法
             FileService._safe_file_cleanup(file_path)

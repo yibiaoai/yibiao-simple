@@ -236,11 +236,39 @@ class OpenAIService:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ]
+
+        # 使用 check_json 校验 AI 返回结果是否符合预期的 JSON 结构，失败时重试
+        max_retries = 3
+        attempt = 0
+        last_error_msg = ""
         full_content = ""
-        async for chunk in self.stream_chat_completion(messages, temperature=0.7, response_format={"type": "json_object"}):
-            full_content += chunk
-        
-        level_l1 = json.loads(full_content.strip())
+
+        while True:
+            full_content = ""
+            async for chunk in self.stream_chat_completion(
+                messages,
+                temperature=0.7,
+                response_format={"type": "json_object"}
+            ):
+                full_content += chunk
+
+            # 校验一级提纲 JSON 结构：schema_json 是字符串形式的模板，check_json 内部会解析
+            isok, error_msg = check_json(str(full_content), schema_json)
+            if isok:
+                break
+
+            last_error_msg = error_msg
+            if attempt >= max_retries:
+                # 多次重试失败，抛出异常，让上层按友好提示处理
+                print(f"一级提纲 check_json 校验失败，已达到最大重试次数({max_retries})：{last_error_msg}")
+                raise Exception(f"生成一级提纲失败: {last_error_msg}")
+
+            attempt += 1
+            print(f"一级提纲 check_json 校验失败，进行第 {attempt}/{max_retries} 次重试：{last_error_msg}")
+            await asyncio.sleep(0.5)
+
+        # 通过校验后再进行 JSON 解析
+        level_l1 = json.loads(full_content.strip()) 
         
         expected_word_count=100000
         leaf_node_count = expected_word_count // 1500

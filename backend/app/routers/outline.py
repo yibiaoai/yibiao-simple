@@ -25,35 +25,46 @@ async def generate_outline(request: OutlineRequest):
         openai_service = OpenAIService()
         
         async def generate():
-            # 后台计算主任务
-            compute_task = asyncio.create_task(openai_service.generate_outline_v2(
-                overview=request.overview,
-                requirements=request.requirements
-            ))
+            try:
+                # 后台计算主任务
+                compute_task = asyncio.create_task(openai_service.generate_outline_v2(
+                    overview=request.overview,
+                    requirements=request.requirements
+                ))
 
-            # 在等待计算完成期间发送心跳，保持连接（发送空字符串chunk）
-            while not compute_task.done():
-                yield f"data: {json.dumps({'chunk': ''}, ensure_ascii=False)}\n\n"
-                await asyncio.sleep(1)
+                # 在等待计算完成期间发送心跳，保持连接（发送空字符串chunk）
+                while not compute_task.done():
+                    yield f"data: {json.dumps({'chunk': ''}, ensure_ascii=False)}\n\n"
+                    await asyncio.sleep(1)
 
-            # 计算完成
-            result = await compute_task
+                # 计算完成
+                result = await compute_task
 
-            # 确保为字符串
-            if isinstance(result, dict):
-                result_str = json.dumps(result, ensure_ascii=False)
-            else:
-                result_str = str(result)
+                # 确保为字符串
+                if isinstance(result, dict):
+                    result_str = json.dumps(result, ensure_ascii=False)
+                else:
+                    result_str = str(result)
 
-            # 分片发送实际数据
-            chunk_size = 128
-            chunk_delay = 0.1  # 每个分片之间增加一点点延迟，增强SSE逐步展示效果
-            for i in range(0, len(result_str), chunk_size):
-                piece = result_str[i:i+chunk_size]
-                yield f"data: {json.dumps({'chunk': piece}, ensure_ascii=False)}\n\n"
-                await asyncio.sleep(chunk_delay)
-            # 发送结束信号
-            yield "data: [DONE]\n\n"
+                # 分片发送实际数据
+                chunk_size = 128
+                chunk_delay = 0.1  # 每个分片之间增加一点点延迟，增强SSE逐步展示效果
+                for i in range(0, len(result_str), chunk_size):
+                    piece = result_str[i:i+chunk_size]
+                    yield f"data: {json.dumps({'chunk': piece}, ensure_ascii=False)}\n\n"
+                    await asyncio.sleep(chunk_delay)
+                # 发送结束信号
+                yield "data: [DONE]\n\n"
+            except Exception as e:
+                # 捕获后台任务中的异常，通过 SSE 友好返回给前端
+                error_message = f"目录生成失败: {str(e)}"
+                payload = {
+                    "chunk": "",
+                    "error": True,
+                    "message": error_message,
+                }
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
 
         return StreamingResponse(
             generate(),
