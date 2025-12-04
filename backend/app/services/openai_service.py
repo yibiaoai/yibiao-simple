@@ -1,13 +1,13 @@
 """OpenAI服务"""
 import openai
-from typing import Generator, Dict, Any, List, AsyncGenerator
+from typing import Dict, Any, List, AsyncGenerator
 import json
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 
-from ..utils.outline_util import get_random_indexes, calculate_nodes_distribution,generate_one_outline_json_by_level1
+from ..utils.outline_util import get_random_indexes, calculate_nodes_distribution, generate_one_outline_json_by_level1
 from ..utils.json_util import check_json
 from ..utils.config_manager import config_manager
+
 
 class OpenAIService:
     """OpenAI服务类"""
@@ -54,15 +54,73 @@ class OpenAIService:
                 stream=True,
                 **({"response_format": response_format} if response_format is not None else {})
             )
-            
+
             async for chunk in stream:
                 if chunk.choices[0].delta.content is not None:
                     yield chunk.choices[0].delta.content
-                    
+
         except Exception as e:
             yield f"错误: {str(e)}"
-    
-    
+
+    async def _collect_stream_text(
+        self,
+        messages: list,
+        temperature: float = 0.7,
+        response_format: dict | None = None,
+    ) -> str:
+        """收集流式返回的文本到一个完整字符串"""
+        full_content = ""
+        async for chunk in self.stream_chat_completion(
+            messages,
+            temperature=temperature,
+            response_format=response_format,
+        ):
+            full_content += chunk
+        return full_content
+
+    async def _generate_with_json_check(
+        self,
+        messages: list,
+        schema: str | Dict[str, Any],
+        max_retries: int = 3,
+        temperature: float = 0.7,
+        response_format: dict | None = None,
+        log_prefix: str = "",
+        raise_on_fail: bool = True,
+    ) -> str:
+        """
+        通用的带 JSON 结构校验与重试的生成函数。
+
+        返回：通过校验的 full_content；如果 raise_on_fail=False，则在多次失败后返回最后一次内容。
+        """
+        attempt = 0
+        last_error_msg = ""
+
+        while True:
+            full_content = await self._collect_stream_text(
+                messages,
+                temperature=temperature,
+                response_format=response_format,
+            )
+
+            isok, error_msg = check_json(str(full_content), schema)
+            if isok:
+                return full_content
+
+            last_error_msg = error_msg
+            prefix = f"{log_prefix} " if log_prefix else ""
+
+            if attempt >= max_retries:
+                print(f"{prefix}check_json 校验失败，已达到最大重试次数({max_retries})：{last_error_msg}")
+                if raise_on_fail:
+                    raise Exception(f"{prefix}check_json 校验失败: {last_error_msg}")
+                # 不抛异常，返回最后一次内容（保持原有行为）
+                return full_content
+
+            attempt += 1
+            print(f"{prefix}check_json 校验失败，进行第 {attempt}/{max_retries} 次重试：{last_error_msg}")
+            await asyncio.sleep(0.5)
+
     async def generate_content_for_outline(self, outline: Dict[str, Any], project_overview: str = "") -> Dict[str, Any]:
         """为目录结构生成内容"""
         try:
@@ -194,14 +252,14 @@ class OpenAIService:
             yield f"错误: {str(e)}"
             
     async def generate_outline_v2(self, overview: str, requirements: str) -> Dict[str, Any]:
-        schema_json=json.dumps([
+        schema_json = json.dumps([
             {
-                "rating_item":"原评分项",
-                "new_title":"根据评分项修改的标题"
+                "rating_item": "原评分项",
+                "new_title": "根据评分项修改的标题",
             }
         ])
 
-        system_prompt=f"""
+        system_prompt = f"""
             ### 角色
             你是专业的标书编写专家，擅长根据项目需求编写标书。
             
@@ -215,9 +273,9 @@ class OpenAIService:
             
             ### Output Format in JSON
             {schema_json}
-            
+
             """
-        user_prompt=f"""
+        user_prompt = f"""
             ### 项目信息
             
             <overview>
@@ -227,56 +285,37 @@ class OpenAIService:
             <requirements>
             {requirements}
             </requirements>
-            
-            
+
+
             直接返回json，不要任何额外说明或格式标记
-            
+
             """
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ]
 
-        # 使用 check_json 校验 AI 返回结果是否符合预期的 JSON 结构，失败时重试
-        max_retries = 3
-        attempt = 0
-        last_error_msg = ""
-        full_content = ""
-
-        while True:
-            full_content = ""
-            async for chunk in self.stream_chat_completion(
-                messages,
-                temperature=0.7,
-                response_format={"type": "json_object"}
-            ):
-                full_content += chunk
-
-            # 校验一级提纲 JSON 结构：schema_json 是字符串形式的模板，check_json 内部会解析
-            isok, error_msg = check_json(str(full_content), schema_json)
-            if isok:
-                break
-
-            last_error_msg = error_msg
-            if attempt >= max_retries:
-                # 多次重试失败，抛出异常，让上层按友好提示处理
-                print(f"一级提纲 check_json 校验失败，已达到最大重试次数({max_retries})：{last_error_msg}")
-                raise Exception(f"生成一级提纲失败: {last_error_msg}")
-
-            attempt += 1
-            print(f"一级提纲 check_json 校验失败，进行第 {attempt}/{max_retries} 次重试：{last_error_msg}")
-            await asyncio.sleep(0.5)
+        # 使用通用方法进行 JSON 校验与重试（失败时抛出异常）
+        full_content = await self._generate_with_json_check(
+            messages=messages,
+            schema=schema_json,
+            max_retries=3,
+            temperature=0.7,
+            response_format={"type": "json_object"},
+            log_prefix="一级提纲",
+            raise_on_fail=True,
+        )
 
         # 通过校验后再进行 JSON 解析
-        level_l1 = json.loads(full_content.strip()) 
-        
-        expected_word_count=100000
+        level_l1 = json.loads(full_content.strip())
+
+        expected_word_count = 100000
         leaf_node_count = expected_word_count // 1500
         
         # 随机重点章节
-        index1,index2=get_random_indexes(len(level_l1))
-        
-        nodes_distribution = calculate_nodes_distribution(len(level_l1),(index1,index2),leaf_node_count)
+        index1, index2 = get_random_indexes(len(level_l1))
+
+        nodes_distribution = calculate_nodes_distribution(len(level_l1), (index1, index2), leaf_node_count)
         
         # 并发生成每个一级节点的提纲，保持结果顺序
         tasks = [
@@ -289,11 +328,11 @@ class OpenAIService:
         
         return {"outline": outline}
     
-    async def process_level1_node(self,i, level1_node,nodes_distribution,level_l1,overview,requirements):
+    async def process_level1_node(self, i, level1_node, nodes_distribution, level_l1, overview, requirements):
         """处理单个一级节点的函数"""
 
         # 生成json
-        json_outline = generate_one_outline_json_by_level1(level1_node["new_title"], i+1, nodes_distribution)
+        json_outline = generate_one_outline_json_by_level1(level1_node["new_title"], i + 1, nodes_distribution)
         print(f"正在处理第{i+1}章: {level1_node['new_title']}")
         
         # 其他标题
@@ -301,7 +340,7 @@ class OpenAIService:
                             for j, node in enumerate(level_l1) 
                             if j!= i])
 
-        system_prompt=f"""
+        system_prompt = f"""
     ### 角色
     你是专业的标书编写专家，擅长根据项目需求编写标书。
     
@@ -319,9 +358,9 @@ class OpenAIService:
 
     ### Output Format in JSON
     {json_outline}
-    
+
     """
-        user_prompt=f"""
+        user_prompt = f"""
     ### 项目信息
 
     <overview>
@@ -335,32 +374,25 @@ class OpenAIService:
     <other_outline>
     {other_outline}
     </other_outline>
-    
-    
+
+
     直接返回json，不要任何额外说明或格式标记
-    
+
     """
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ]
-        max_retries = 3
-        attempt = 0
-        last_error_msg = ""
-        full_content = ""
-        while True:
-            full_content = ""
-            async for chunk in self.stream_chat_completion(messages, temperature=0.7, response_format={"type": "json_object"}):
-                full_content += chunk
-            isok, error_msg = check_json(str(full_content), json_outline)
-            if isok:
-                break
-            last_error_msg = error_msg
-            if attempt >= max_retries:
-                print(f"check_json 校验失败，已达到最大重试次数({max_retries})：{last_error_msg}")
-                break
-            attempt += 1
-            print(f"check_json 校验失败，进行第 {attempt}/{max_retries} 次重试：{last_error_msg}")
-            await asyncio.sleep(0.5)
+
+        # 使用通用方法进行 JSON 校验与重试（失败时不抛异常，保持原有“返回最后一次结果”的行为）
+        full_content = await self._generate_with_json_check(
+            messages=messages,
+            schema=json_outline,
+            max_retries=3,
+            temperature=0.7,
+            response_format={"type": "json_object"},
+            log_prefix=f"第{i+1}章",
+            raise_on_fail=False,
+        )
 
         return json.loads(full_content.strip())

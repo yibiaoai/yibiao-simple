@@ -1,9 +1,9 @@
 """内容相关API路由"""
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
 from ..models.schemas import ContentGenerationRequest, ChapterContentRequest
 from ..services.openai_service import OpenAIService
 from ..utils.config_manager import config_manager
+from ..utils.sse import sse_response
 import json
 
 router = APIRouter(prefix="/api/content", tags=["内容管理"])
@@ -78,15 +78,7 @@ async def generate_chapter_content_stream(request: ChapterContentRequest):
             # 发送结束信号
             yield "data: [DONE]\n\n"
         
-        return StreamingResponse(
-            generate(),
-            media_type="text/plain",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "Content-Type": "text/event-stream",
-            }
-        )
+        return sse_response(generate())
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"章节内容生成失败: {str(e)}")
