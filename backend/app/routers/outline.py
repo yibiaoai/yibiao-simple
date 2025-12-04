@@ -1,10 +1,10 @@
 """目录相关API路由"""
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
 from ..models.schemas import OutlineRequest, OutlineResponse
 from ..services.openai_service import OpenAIService
 from ..utils.config_manager import config_manager
 from ..utils import prompt_manager
+from ..utils.sse import sse_response
 import json
 import asyncio
 
@@ -66,14 +66,7 @@ async def generate_outline(request: OutlineRequest):
                 yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
 
-        return StreamingResponse(
-            generate(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-            }
-        )
+        return sse_response(generate())
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"目录生成失败: {str(e)}")
@@ -126,15 +119,7 @@ async def generate_outline_stream(request: OutlineRequest):
                 # 发送结束信号
                 yield "data: [DONE]\n\n"
         
-        return StreamingResponse(
-            generate(),
-            media_type="text/plain",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "Content-Type": "text/event-stream",
-            }
-        )
+        return sse_response(generate())
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"目录生成失败: {str(e)}")

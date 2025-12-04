@@ -5,6 +5,7 @@ from ..models.schemas import FileUploadResponse, AnalysisRequest, AnalysisType, 
 from ..services.file_service import FileService
 from ..services.openai_service import OpenAIService
 from ..utils.config_manager import config_manager
+from ..utils.sse import sse_response
 import json
 import io
 import re
@@ -15,6 +16,20 @@ from docx.oxml.ns import qn
 from urllib.parse import quote
 
 router = APIRouter(prefix="/api/document", tags=["文档处理"])
+
+
+def set_run_font_simsun(run: docx.text.run.Run) -> None:
+    """统一将 run 字体设置为宋体（包含 EastAsia 字体设置）"""
+    run.font.name = "宋体"
+    r = run._element.rPr
+    if r is not None and r.rFonts is not None:
+        r.rFonts.set(qn("w:eastAsia"), "宋体")
+
+
+def set_paragraph_font_simsun(paragraph: docx.text.paragraph.Paragraph) -> None:
+    """将段落内所有 runs 字体设置为宋体"""
+    for run in paragraph.runs:
+        set_run_font_simsun(run)
 
 
 @router.post("/upload", response_model=FileUploadResponse)
@@ -134,15 +149,7 @@ async def analyze_document_stream(request: AnalysisRequest):
             # 发送结束信号
             yield "data: [DONE]\n\n"
         
-        return StreamingResponse(
-            generate(),
-            media_type="text/plain",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "Content-Type": "text/event-stream",
-            }
-        )
+        return sse_response(generate())
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"文档分析失败: {str(e)}")
@@ -179,10 +186,7 @@ async def export_word(request: WordExportRequest):
         run = p.add_run("内容由AI生成")
         run.italic = True
         run.font.size = Pt(9)
-        run.font.name = "宋体"
-        r = run._element.rPr
-        if r is not None and r.rFonts is not None:
-            r.rFonts.set(qn("w:eastAsia"), "宋体")
+        set_run_font_simsun(run)
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
         # 文档标题
@@ -191,32 +195,21 @@ async def export_word(request: WordExportRequest):
         title_run = title_p.add_run(title)
         title_run.bold = True
         title_run.font.size = Pt(16)
-        title_run.font.name = "宋体"
-        tr = title_run._element.rPr
-        if tr is not None and tr.rFonts is not None:
-            tr.rFonts.set(qn("w:eastAsia"), "宋体")
+        set_run_font_simsun(title_run)
         title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
         # 项目概述
         if request.project_overview:
             heading = doc.add_heading("项目概述", level=1)
             heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
-            for hr in heading.runs:
-                hr.font.name = "宋体"
-                rr = hr._element.rPr
-                if rr is not None and rr.rFonts is not None:
-                    rr.rFonts.set(qn("w:eastAsia"), "宋体")
+            set_paragraph_font_simsun(heading)
             overview_p = doc.add_paragraph(request.project_overview)
-            for orun in overview_p.runs:
-                orun.font.name = "宋体"
-                rr = orun._element.rPr
-                if rr is not None and rr.rFonts is not None:
-                    rr.rFonts.set(qn("w:eastAsia"), "宋体")
+            set_paragraph_font_simsun(overview_p)
             overview_p_format = overview_p.paragraph_format
             overview_p_format.space_after = Pt(12)
 
         # 简单的 Markdown 段落解析：支持标题、列表、表格和基础加粗/斜体
-        def add_markdown_runs(para: docx.text.paragraph.Paragraph, text: str):
+        def add_markdown_runs(para: docx.text.paragraph.Paragraph, text: str) -> None:
             """在指定段落中追加 markdown 文本的 runs"""
             pattern = r"(\*\*.*?\*\*|\*.*?\*|`.*?`)"
             parts = re.split(pattern, text)
@@ -238,19 +231,23 @@ async def export_word(request: WordExportRequest):
                 else:
                     run.text = part
                 # 确保字体为宋体
-                run.font.name = "宋体"
-                r = run._element.rPr
-                if r is not None and r.rFonts is not None:
-                    r.rFonts.set(qn("w:eastAsia"), "宋体")
+                set_run_font_simsun(run)
 
-        def add_markdown_paragraph(text: str):
+        def add_markdown_paragraph(text: str) -> None:
             """将一段 Markdown 文本解析为一个普通段落，保留加粗/斜体效果"""
             para = doc.add_paragraph()
             add_markdown_runs(para, text)
             para.paragraph_format.space_after = Pt(6)
 
-        def add_markdown_content(content: str):
-            """按行解析 Markdown 文本并添加到文档"""
+        def parse_markdown_blocks(content: str):
+            """
+            识别 Markdown 内容中的块级元素，返回结构化的 block 列表：
+            - ('list', items)        items: [(kind, num_str, text), ...]
+            - ('table', rows)        rows: [text, ...]
+            - ('heading', level, text)
+            - ('paragraph', text)
+            """
+            blocks = []
             lines = content.split("\n")
             i = 0
             while i < len(lines):
@@ -284,25 +281,8 @@ async def export_word(request: WordExportRequest):
                             continue
                         break
 
-                    for kind, num_str, text in items:
-                        p = doc.add_paragraph()
-                        if kind == "unordered":
-                            # 使用“• ”模拟项目符号
-                            run = p.add_run("• ")
-                            run.font.name = "宋体"
-                            r = run._element.rPr
-                            if r is not None and r.rFonts is not None:
-                                r.rFonts.set(qn("w:eastAsia"), "宋体")
-                        else:
-                            # 有序列表：输出 "1. " 这样的前缀
-                            prefix = f"{num_str}."
-                            run = p.add_run(prefix + " ")
-                            run.font.name = "宋体"
-                            r = run._element.rPr
-                            if r is not None and r.rFonts is not None:
-                                r.rFonts.set(qn("w:eastAsia"), "宋体")
-                        # 紧跟在同一段落中追加列表文本
-                        add_markdown_runs(p, text)
+                    if items:
+                        blocks.append(("list", items))
                     continue
 
                 # 表格（简化为每行一个段落，单元格用 | 分隔）
@@ -321,8 +301,8 @@ async def export_word(request: WordExportRequest):
                             i += 1
                         else:
                             break
-                    for row in rows:
-                        add_markdown_paragraph(row)
+                    if rows:
+                        blocks.append(("table", rows))
                     continue
 
                 # Markdown 标题（# / ## / ###）
@@ -331,8 +311,7 @@ async def export_word(request: WordExportRequest):
                     if m:
                         level_marks, title_text = m.groups()
                         level = min(len(level_marks), 3)
-                        heading = doc.add_heading(title_text.strip(), level=level)
-                        heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                        blocks.append(("heading", level, title_text.strip()))
                     i += 1
                     continue
 
@@ -354,9 +333,48 @@ async def export_word(request: WordExportRequest):
                         break
                 if para_lines:
                     text = " ".join(para_lines)
-                    add_markdown_paragraph(text)
+                    blocks.append(("paragraph", text))
                 else:
                     i += 1
+
+            return blocks
+
+        def render_markdown_blocks(blocks) -> None:
+            """将结构化的 Markdown blocks 渲染到文档"""
+            for block in blocks:
+                kind = block[0]
+                if kind == "list":
+                    items = block[1]
+                    for item_kind, num_str, text in items:
+                        p = doc.add_paragraph()
+                        if item_kind == "unordered":
+                            # 使用“• ”模拟项目符号
+                            run = p.add_run("• ")
+                            set_run_font_simsun(run)
+                        else:
+                            # 有序列表：输出 "1. " 这样的前缀
+                            prefix = f"{num_str}."
+                            run = p.add_run(prefix + " ")
+                            set_run_font_simsun(run)
+                        # 紧跟在同一段落中追加列表文本
+                        add_markdown_runs(p, text)
+                elif kind == "table":
+                    rows = block[1]
+                    for row in rows:
+                        add_markdown_paragraph(row)
+                elif kind == "heading":
+                    _, level, text = block
+                    heading = doc.add_heading(text, level=level)
+                    heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    set_paragraph_font_simsun(heading)
+                elif kind == "paragraph":
+                    _, text = block
+                    add_markdown_paragraph(text)
+
+        def add_markdown_content(content: str) -> None:
+            """解析并渲染 Markdown 文本到文档"""
+            blocks = parse_markdown_blocks(content)
+            render_markdown_blocks(blocks)
 
         # 递归构建文档内容（章节和内容）
         def add_outline_items(items, level: int = 1):
