@@ -110,13 +110,22 @@ const ContentEdit: React.FC<ContentEditProps> = ({
 
   // 监听页面滚动，控制回到顶部按钮的显示
   useEffect(() => {
+    // 现在主内容区为内部滚动容器（App.tsx: #app-main-scroll），不能只监听 window
+    const scrollContainer = document.getElementById('app-main-scroll');
+
     const handleScroll = () => {
-      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const scrollTop = scrollContainer
+        ? scrollContainer.scrollTop
+        : (window.pageYOffset || document.documentElement.scrollTop);
       setShowScrollToTop(scrollTop > 300);
     };
 
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    // 初始化计算一次，避免刷新后位置不对
+    handleScroll();
+
+    const target: any = scrollContainer || window;
+    target.addEventListener('scroll', handleScroll);
+    return () => target.removeEventListener('scroll', handleScroll);
   }, []);
 
   // 获取叶子节点的实时内容
@@ -347,10 +356,12 @@ const ContentEdit: React.FC<ContentEditProps> = ({
 
   // 滚动到页面顶部
   const scrollToTop = () => {
-    window.scrollTo({
-      top: 0,
-      behavior: 'smooth'
-    });
+    const scrollContainer = document.getElementById('app-main-scroll');
+    if (scrollContainer) {
+      scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // 导出Word文档
@@ -519,7 +530,7 @@ const ContentEdit: React.FC<ContentEditProps> = ({
       {showScrollToTop && (
         <button
           onClick={scrollToTop}
-          className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-3 shadow-lg transition-all duration-300 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 z-50"
+          className="fixed bottom-24 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-3 shadow-lg transition-all duration-300 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 z-[60]"
           aria-label="回到顶部"
         >
           <ArrowUpIcon className="w-5 h-5" />

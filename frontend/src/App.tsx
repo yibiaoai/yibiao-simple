@@ -74,7 +74,7 @@ function App() {
         </div>
 
         {/* 页面内容 */}
-        <div className="flex-1 p-6 overflow-y-auto">
+        <div id="app-main-scroll" className="flex-1 p-6 overflow-y-auto">
           {renderCurrentPage()}
         </div>
 
