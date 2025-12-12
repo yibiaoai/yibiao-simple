@@ -5,6 +5,7 @@ import React, { useState, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { documentApi } from '../services/api';
 import { CloudArrowUpIcon, DocumentIcon } from '@heroicons/react/24/outline';
+import { draftStorage } from '../utils/draftStorage';
 
 interface DocumentAnalysisProps {
   fileContent: string;
@@ -104,6 +105,9 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
       const response = await documentApi.uploadFile(file);
       
       if (response.data.success && response.data.file_content) {
+        // 上传新招标文件：清空上一轮 localStorage（按你的需求）
+        // 注意：这会同时清掉之前保存的草稿/正文内容缓存等
+        draftStorage.clearAll();
         onFileUpload(response.data.file_content);
         setMessage({ type: 'success', text: response.data.message });
       } else {
@@ -294,7 +298,7 @@ const DocumentAnalysis: React.FC<DocumentAnalysisProps> = ({
           </div>
 
           {/* 流式分析内容显示 */}
-          {analyzing && (currentAnalysisStep === 'overview' && streamingOverview || currentAnalysisStep === 'requirements' && streamingRequirements) && (
+          {analyzing && (((currentAnalysisStep === 'overview') && streamingOverview) || ((currentAnalysisStep === 'requirements') && streamingRequirements)) && (
             <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <h4 className="text-sm font-medium text-blue-800 mb-3">
                 {currentAnalysisStep === 'overview' ? '正在分析项目概述...' : '正在分析技术评分要求...'}

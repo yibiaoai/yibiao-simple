@@ -3,6 +3,7 @@
  */
 import { useState, useCallback } from 'react';
 import { AppState, ConfigData, OutlineData } from '../types';
+import { draftStorage } from '../utils/draftStorage';
 
 const initialState: AppState = {
   currentStep: 0,
@@ -19,48 +20,81 @@ const initialState: AppState = {
 };
 
 export const useAppState = () => {
-  const [state, setState] = useState<AppState>(initialState);
+  const [state, setState] = useState<AppState>(() => {
+    const draft = draftStorage.loadDraft();
+    return {
+      ...initialState,
+      ...(draft || {}),
+    };
+  });
 
   const updateConfig = useCallback((config: ConfigData) => {
     setState(prev => ({ ...prev, config }));
   }, []);
 
   const updateStep = useCallback((step: number) => {
-    setState(prev => ({ ...prev, currentStep: step }));
+    setState(prev => {
+      const next = { ...prev, currentStep: step };
+      draftStorage.saveDraft({ currentStep: step });
+      return next;
+    });
   }, []);
 
   const updateFileContent = useCallback((fileContent: string) => {
-    setState(prev => ({ ...prev, fileContent }));
+    setState(prev => {
+      const next = { ...prev, fileContent };
+      draftStorage.saveDraft({ fileContent });
+      return next;
+    });
   }, []);
 
   const updateAnalysisResults = useCallback((overview: string, requirements: string) => {
-    setState(prev => ({ 
-      ...prev, 
-      projectOverview: overview,
-      techRequirements: requirements 
-    }));
+    setState(prev => {
+      const next = {
+        ...prev,
+        projectOverview: overview,
+        techRequirements: requirements,
+      };
+      draftStorage.saveDraft({
+        projectOverview: overview,
+        techRequirements: requirements,
+      });
+      return next;
+    });
   }, []);
 
   const updateOutline = useCallback((outlineData: OutlineData) => {
-    setState(prev => ({ ...prev, outlineData }));
+    setState(prev => {
+      const next = { ...prev, outlineData };
+      draftStorage.saveDraft({ outlineData });
+      return next;
+    });
   }, []);
 
   const updateSelectedChapter = useCallback((chapterId: string) => {
-    setState(prev => ({ ...prev, selectedChapter: chapterId }));
+    setState(prev => {
+      const next = { ...prev, selectedChapter: chapterId };
+      draftStorage.saveDraft({ selectedChapter: chapterId });
+      return next;
+    });
   }, []);
 
   const nextStep = useCallback(() => {
-    setState(prev => ({ 
-      ...prev, 
-      currentStep: Math.min(prev.currentStep + 1, 2) 
-    }));
+    setState(prev => {
+      const nextStepValue = Math.min(prev.currentStep + 1, 2);
+      const next = { ...prev, currentStep: nextStepValue };
+      draftStorage.saveDraft({ currentStep: nextStepValue });
+      return next;
+    });
   }, []);
 
   const prevStep = useCallback(() => {
-    setState(prev => ({ 
-      ...prev, 
-      currentStep: Math.max(prev.currentStep - 1, 0) 
-    }));
+    setState(prev => {
+      const prevStepValue = Math.max(prev.currentStep - 1, 0);
+      const next = { ...prev, currentStep: prevStepValue };
+      draftStorage.saveDraft({ currentStep: prevStepValue });
+      return next;
+    });
   }, []);
 
   return {

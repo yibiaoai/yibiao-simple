@@ -8,6 +8,7 @@ import { DocumentTextIcon, PlayIcon, DocumentArrowDownIcon, CheckCircleIcon, Exc
 import { contentApi, ChapterContentRequest, documentApi } from '../services/api';
 import { saveAs } from 'file-saver';
 import { Paragraph, TextRun } from 'docx';
+import { draftStorage } from '../utils/draftStorage';
 
 interface ContentEditProps {
   outlineData: OutlineData | null;
@@ -22,6 +23,7 @@ interface GenerationProgress {
   failed: string[];
   generating: Set<string>; // 正在生成的项目ID集合
 }
+
 
 const ContentEdit: React.FC<ContentEditProps> = ({
   outlineData,
@@ -91,7 +93,17 @@ const ContentEdit: React.FC<ContentEditProps> = ({
   useEffect(() => {
     if (outlineData) {
       const leaves = collectLeafItems(outlineData.outline);
-      setLeafItems(leaves);
+      // 恢复本地缓存的正文内容（仅对叶子节点生效）
+      const filtered = draftStorage.filterContentByOutlineLeaves(outlineData.outline);
+      const mergedLeaves = leaves.map((leaf) => {
+        const cached = filtered[leaf.id];
+        return cached ? { ...leaf, content: cached } : leaf;
+      });
+
+      // 目录变更时，顺手清理掉无效的旧缓存（只保留当前叶子节点）
+      draftStorage.saveContentById(filtered);
+
+      setLeafItems(mergedLeaves);
       setProgress(prev => ({ ...prev, total: leaves.length }));
     }
   }, [outlineData, collectLeafItems]);
@@ -219,6 +231,8 @@ const ContentEdit: React.FC<ContentEditProps> = ({
                 // 实时更新内容
                 content = parsed.full_content;
                 updatedItem.content = content;
+                // 本地持久化（刷新后可恢复）
+                draftStorage.upsertChapterContent(item.id, content);
                 
                 // 实时更新叶子节点数据以触发重新渲染
                 setLeafItems(prevItems => {
@@ -232,6 +246,8 @@ const ContentEdit: React.FC<ContentEditProps> = ({
               } else if (parsed.status === 'completed' && parsed.content) {
                 content = parsed.content;
                 updatedItem.content = content;
+                // 本地持久化（最终结果）
+                draftStorage.upsertChapterContent(item.id, content);
               } else if (parsed.status === 'error') {
                 throw new Error(parsed.message);
               }
@@ -327,130 +343,7 @@ const ContentEdit: React.FC<ContentEditProps> = ({
   };
 
   // 解析Markdown内容为Word段落
-  const parseMarkdownToWord = (content: string) => {
-    const paragraphs = [];
-    const lines = content.split('\n');
-    let i = 0;
-    
-    while (i < lines.length) {
-      const line = lines[i].trim();
-      
-      if (!line) {
-        i++;
-        continue;
-      }
-      
-      // 处理列表项
-      if (line.startsWith('- ') || line.startsWith('* ') || /^\d+\.\s/.test(line)) {
-        const listItems = [];
-        while (i < lines.length && (lines[i].trim().startsWith('- ') || lines[i].trim().startsWith('* ') || /^\s*\d+\.\s/.test(lines[i]))) {
-          const listItem = lines[i].trim().replace(/^[-*]\s|^\d+\.\s/, '');
-          if (listItem) {
-            listItems.push(listItem);
-          }
-          i++;
-        }
-        
-        // 为每个列表项创建段落
-        listItems.forEach(item => {
-          paragraphs.push(
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: `• ${item}`,
-                  size: 20,
-                }),
-              ],
-              spacing: { after: 100 },
-              indent: { left: 360 }, // 缩进
-            })
-          );
-        });
-        continue;
-      }
-      
-      // 处理表格（简化处理）
-      if (line.includes('|')) {
-        const tableRows = [];
-        while (i < lines.length && lines[i].trim().includes('|')) {
-          const row = lines[i].trim();
-          if (row && !row.match(/^\|?[-\s\|]+\|?$/)) { // 跳过分隔行
-            const cells = row.split('|').map(cell => cell.trim()).filter(cell => cell);
-            if (cells.length > 0) {
-              tableRows.push(cells.join(' | '));
-            }
-          }
-          i++;
-        }
-        
-        // 将表格转换为段落形式
-        tableRows.forEach(row => {
-          paragraphs.push(
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: row,
-                  size: 20,
-                }),
-              ],
-              spacing: { after: 100 },
-              indent: { left: 180 },
-            })
-          );
-        });
-        continue;
-      }
-      
-      // 处理标题
-      if (line.startsWith('#')) {
-        const match = line.match(/^#+/);
-        const level = match ? match[0].length : 1;
-        const text = line.replace(/^#+\s*/, '');
-        paragraphs.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: text,
-                bold: true,
-                size: level === 1 ? 24 : level === 2 ? 22 : 20,
-              }),
-            ],
-            spacing: { before: 200, after: 100 },
-          })
-        );
-        i++;
-        continue;
-      }
-      
-      // 处理普通段落
-      const paragraph = [];
-      while (i < lines.length && lines[i].trim() && 
-             !lines[i].trim().startsWith('-') && 
-             !lines[i].trim().startsWith('*') && 
-             !lines[i].trim().includes('|') && 
-             !lines[i].trim().startsWith('#')) {
-        paragraph.push(lines[i].trim());
-        i++;
-      }
-      
-      if (paragraph.length > 0) {
-        const text = paragraph.join(' ').replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1').replace(/`(.*?)`/g, '$1');
-        paragraphs.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: text,
-                size: 20,
-              }),
-            ],
-            spacing: { after: 200 },
-          })
-        );
-      }
-    }
-    
-    return paragraphs;
-  };
+  // （已提取到文件顶层，供后续导出Word等复用）
 
   // 滚动到页面顶部
   const scrollToTop = () => {
@@ -468,7 +361,6 @@ const ContentEdit: React.FC<ContentEditProps> = ({
       // 构建带有最新内容的导出数据（leafItems 中存的是实时内容）
       const buildExportOutline = (items: OutlineItem[]): OutlineItem[] => {
         return items.map(item => {
-          const isLeaf = !item.children || item.children.length === 0;
           const latestContent = getLatestContent(item);
           const exportedItem: OutlineItem = {
             ...item,
